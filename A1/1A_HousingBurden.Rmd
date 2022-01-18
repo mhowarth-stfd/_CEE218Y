@@ -1,0 +1,236 @@
+---
+title: "218_1A_HousingBurden"
+author: "Awoe"
+date: "1/17/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tigris)
+library(sf)
+library(leaflet)
+library(censusapi)
+library(ggplot2)
+```
+
+```{r}
+setwd('C:/Users/mouse/OneDrive - Stanford/MS2/WinterQ/218Y/Land Use')
+#rm(list = ls())
+
+Sys.setenv(CENSUS_KEY = "30f44d95cb0d8c10acfc57d830d39957dbfe8a39")
+
+acs_vars_2019_5yr <- 
+  listCensusMetadata(
+    name = "2019/acs/acs5",
+    type = "variables"
+  )
+
+saveRDS(acs_vars_2019_5yr, "acs_vars_2019_5yr.rds")
+
+```
+housing costs censuses: B25074 (household income by gross rent as a % of income) and B25095 (monthly owner costs as % of income)
+
+```{r  Renter Housing Burden}
+# grab EPA place ID; manually
+EPA <- places("06") %>% 
+  filter(NAME == "East Palo Alto")
+
+rent_housingcost <- 
+  getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "place:20956",
+    regionin = "state:06",
+    vars = "group(B25074)"
+  ) %>% 
+  mutate(
+    cbg = 
+      paste0(state, place)
+  ) %>% 
+  select(!c(GEO_ID, state, place) & !ends_with(c("EA", "MA", "M"))) %>% 
+  mutate(
+    across(everything(), as.numeric)
+  ) %>% 
+  pivot_longer(
+    ends_with("E"), 
+    names_to = "variable", 
+    values_to = "estimate"
+  ) %>% 
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label, 
+    into = c(NA, NA, "house_income", "grossrent_perc"), 
+    sep = "!!"
+  ) %>% 
+  filter(
+    !is.na(house_income), 
+    !is.na(grossrent_perc)
+  )
+
+# we want to filter for people who spend more than 30% of income on rent (regardless of income)
+
+EPA_RentBurden <- 
+  rent_housingcost %>% 
+  mutate(
+    burden_count =
+      ifelse(
+        grossrent_perc %in% c(
+          "30.0 to 34.9 percent",
+          "35.0 to 39.9 percent",
+          "40.0 to 49.9 percent",
+          "50.0 percent or more"
+        ),
+        estimate,
+        NA
+      )
+  ) %>% 
+  group_by(house_income) %>% 
+  summarize(
+    burdened_sum = sum(burden_count, na.rm = T),
+    total_pop = sum(estimate, na.rm = T)
+  ) %>% 
+  mutate(
+    percent_burdened = burdened_sum/total_pop*100
+  ) %>% 
+  filter(!is.na(percent_burdened))
+
+```
+
+
+```{r Owner Occupied Burden}
+owner_housingcost <- 
+  getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "place:20956",
+    regionin = "state:06",
+    vars = "group(B25095)"
+  ) %>% 
+  mutate(
+    cbg = 
+      paste0(state, place)
+  ) %>% 
+  select(!c(GEO_ID, state, place) & !ends_with(c("EA", "MA", "M"))) %>% 
+    mutate(
+      across(everything(), as.numeric)
+      ) %>% 
+  pivot_longer(
+    ends_with("E"), 
+    names_to = "variable", 
+    values_to = "estimate"
+  ) %>% 
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label, 
+    into = c(NA, NA, "house_income", "gross_housecost_perc"), 
+    sep = "!!"
+  ) %>% 
+  filter(
+    !is.na(house_income), 
+    !is.na(gross_housecost_perc)
+  )
+
+# filter for people who spend more than 30% of their income on housing
+EPA_OwnerCostBurden <- 
+  owner_housingcost %>% 
+  mutate(
+    burden_count =
+      ifelse(
+        gross_housecost_perc %in% c(
+          "30.0 to 34.9 percent",
+          "35.0 to 39.9 percent",
+          "40.0 to 49.9 percent",
+          "50.0 percent or more"
+        ),
+        estimate,
+        NA
+      )
+  ) %>% 
+  group_by(house_income) %>% 
+  summarize(
+    burdened_sum = sum(burden_count, na.rm = T),
+    total_pop = sum(estimate, na.rm = T)
+  ) %>% 
+  mutate(
+    percent_burdened = burdened_sum/total_pop*100
+  ) %>% 
+  filter(!is.na(percent_burdened))
+
+```
+
+```{r Combining Dataframes}
+EPA_CombinedBurden <- rent_housingcost %>% 
+  left_join(owner_housingcost, by = c("cbg"="cbg",
+                                      "house_income"="house_income",
+                                      "grossrent_perc"="gross_housecost_perc")) %>% 
+  mutate(
+    burden_count =
+      ifelse(
+        grossrent_perc %in% c(
+          "30.0 to 34.9 percent",
+          "35.0 to 39.9 percent",
+          "40.0 to 49.9 percent",
+          "50.0 percent or more"
+        ),
+        estimate.x + estimate.y,
+        NA
+      )
+  ) %>% 
+  group_by(house_income) %>% 
+  summarize(
+    burdened_sum = sum(burden_count, na.rm = T), 
+    total_pop = sum(estimate.x+estimate.y, na.rm = T),
+    rent_perc = sum(estimate.y/total_pop*100, na.rm = T),
+    owner_perc = sum(estimate.x/total_pop*100, na.rm = T)
+  ) %>% 
+  mutate(
+    percent_burdened=burdened_sum/total_pop*100
+  )
+
+```
+
+
+```{r Visualizing Plots}
+OwnerBurden <- ggplot(EPA_OwnerCostBurden, aes(x=house_income, y = percent_burdened)) +
+  geom_bar(stat = "identity"
+  ) + 
+  labs(
+    x = "Income Bracket", 
+    y = "Percent Burdened",
+    title = "Percent Burdened Among Owner-Occupied Homes"
+  ) +
+  theme(axis.text.x = element_text(angle = -45, vjust = .5, hjust = .5))
+  
+
+RenterBurden <- ggplot(EPA_RentBurden, aes(x=house_income, y = percent_burdened)) +
+  geom_bar(stat = "identity") + scale_fill_hue(c = 40) + theme(legend.position = "none")+
+    labs(
+    x = "Income Bracket", 
+    y = "Percent Burdened",
+    title = "Percent Burdened Among Renter-Occupied Homes"
+    ) +
+  theme(axis.text.x = element_text(angle = -45, vjust = .5, hjust = .5))
+
+
+
+OwnerBurden
+RenterBurden
+
+```
+
+
+
+
