@@ -9,8 +9,7 @@ editor_options:
 knitr::opts_chunk$set(echo = F, warning = F, message = F)
 ```
 
-## Parcel analysis
-here are words
+
 
 ```{r libraries}
 
@@ -124,13 +123,12 @@ epa_exemption_singleUnit_trend <- epa_exemption %>%
 ```
 
 
-```{r, echo=TRUE}
+```{r}
 
 # this isnt a nice print out, but if you wanted the table in the knitted doc, this could do that
 epa_exemption_singleUnit_trend
 ```
 
-plot has hover points enabled for percentage
 
 ```{r plot_ownership_rent_trend}
 
@@ -257,15 +255,13 @@ CoH_epa_exemption_total_trend <- CoH_epa_exemption_trend%>%
 ```
 
 
-```{r, echo=TRUE}
+```{r}
 
 # this isnt a nice print out, but if you wanted the table in the knitted doc, this could do that
 CoH_epa_exemption_trend
 CoH_epa_exemption_total_trend
 ```
 
-
-plot has hover points enabled for percentage
 
 ```{r CoH_plot}
 

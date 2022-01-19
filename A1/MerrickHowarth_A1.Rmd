@@ -1,0 +1,815 @@
+---
+title: "Assignment 1"
+author: "Merrick Howarth"
+date: "1/18/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, warning = F, message = FALSE)
+```
+
+
+```{r libraries}
+library(tidyverse)
+library(tigris)
+library(sf)
+library(leaflet)
+library(censusapi)
+library(ggplot2)
+library(esri2sf)
+library(plotly)
+
+
+```
+
+
+```{r START OF RENT BURDEN}
+
+```
+
+
+```{r rent burden data, include=FALSE}
+
+
+Sys.setenv(CENSUS_KEY = "dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
+
+# read in ACS variables
+# acs_vars_2019_5yr <- 
+#   listCensusMetadata(
+#     name = "2019/acs/acs5",
+#     type = "variables"
+#    )
+
+#saveRDS(acs_vars_2019_5yr, "acs_vars_2019_5yr.rds")
+acs_vars_2019_5yr <- readRDS("acs_vars_2019_5yr.rds")
+
+```
+
+
+```{r  Renter Housing Burden 30, include=FALSE}
+# grab EPA place ID; manually
+EPA <- places("06") %>% 
+  filter(NAME == "East Palo Alto")
+
+# pulling ACS rent variable for EPA
+rent_housingcost <- 
+  getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "place:20956",
+    regionin = "state:06",
+    vars = "group(B25074)"
+  ) %>% 
+  mutate(
+    cbg = 
+      paste0(state, place)
+  ) %>% 
+  select(!c(GEO_ID, state, place) & !ends_with(c("EA", "MA", "M"))) %>% 
+  mutate(
+    across(everything(), as.numeric)
+  ) %>% 
+  pivot_longer(
+    ends_with("E"), 
+    names_to = "variable", 
+    values_to = "estimate"
+  ) %>% 
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label, 
+    into = c(NA, NA, "house_income", "grossrent_perc"), 
+    sep = "!!"
+  ) %>% 
+  filter(
+    !is.na(house_income), 
+    !is.na(grossrent_perc)
+  )
+
+# we want to filter for people who spend more than 30% of income on rent (regardless of income)
+
+EPA_RentBurden <- 
+  rent_housingcost %>% 
+  mutate(
+    burden_count =
+      ifelse(
+        grossrent_perc %in% c(
+          "30.0 to 34.9 percent",
+          "35.0 to 39.9 percent",
+          "40.0 to 49.9 percent",
+          "50.0 percent or more"
+        ),
+        estimate,
+        NA
+      )
+  ) %>% 
+  group_by(house_income) %>% 
+  summarize(
+    burdened_sum = sum(burden_count, na.rm = T),
+    total_pop = sum(estimate, na.rm = T)
+  ) %>% 
+  mutate(
+    percent_burdened = round(burdened_sum/total_pop*100,2)
+  ) %>% 
+  filter(!is.na(percent_burdened)) %>% 
+  mutate(
+    tenure = "Renter-Occupied Housing"
+  )
+
+```
+
+```{r Owner Occupied Burden 30, include=FALSE}
+owner_housingcost <- 
+  getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "place:20956",
+    regionin = "state:06",
+    vars = "group(B25095)"
+  ) %>% 
+  mutate(
+    cbg = 
+      paste0(state, place)
+  ) %>% 
+  select(!c(GEO_ID, state, place) & !ends_with(c("EA", "MA", "M"))) %>% 
+    mutate(
+      across(everything(), as.numeric)
+      ) %>% 
+  pivot_longer(
+    ends_with("E"), 
+    names_to = "variable", 
+    values_to = "estimate"
+  ) %>% 
+  left_join(
+    acs_vars_2019_5yr %>% 
+      select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  select(-variable) %>% 
+  separate(
+    label, 
+    into = c(NA, NA, "house_income", "gross_housecost_perc"), 
+    sep = "!!"
+  ) %>% 
+  filter(
+    !is.na(house_income), 
+    !is.na(gross_housecost_perc)
+  )
+
+# filter for people who spend more than 30% of their income on housing
+EPA_OwnerCostBurden <- 
+  owner_housingcost %>% 
+  mutate(
+    burden_count =
+      ifelse(
+        gross_housecost_perc %in% c(
+          "30.0 to 34.9 percent",
+          "35.0 to 39.9 percent",
+          "40.0 to 49.9 percent",
+          "50.0 percent or more"
+        ),
+        estimate,
+        NA
+      )
+  ) %>% 
+  group_by(house_income) %>% 
+  summarize(
+    burdened_sum = sum(burden_count, na.rm = T),
+    total_pop = sum(estimate, na.rm = T)
+  ) %>% 
+  mutate(
+    percent_burdened = round(burdened_sum/total_pop*100,2)
+  ) %>% 
+  filter(!is.na(percent_burdened)) %>% 
+  mutate(
+    tenure = "Owner-Occupied Housing"
+  )
+
+```
+
+```{r Combining Dataframes 30}
+
+EPA_CombinedBurden <- rbind(EPA_OwnerCostBurden, EPA_RentBurden)
+  
+```
+
+```{r Visualizing Plots 30}
+
+EPA_HousingBurden30_Figure_gg <- EPA_CombinedBurden %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = house_income %>% factor(levels = c("Less than $10,000:", "$10,000 to $19,999:", "$20,000 to $34,999:", "$35,000 to $49,999:", "$50,000 to $74,999:", "$75,000 to $99,999:", "$100,000 to $149,999:","$100,000 or more:", "$150,000 or more:")),
+      y = percent_burdened,
+      fill = tenure,
+      text = percent_burdened
+    ),
+    stat = "identity",
+    position = "dodge"
+  )+
+  labs(
+    x = "Household Income", 
+    y = "Percent Housing Burden",
+    title = "EPA Percent Housing Cost Burdened >= 30% by Tenure",
+    fill = "Tenure"
+  ) +
+  coord_flip()
+
+EPA_HousingBurden30_Figure <- ggplotly(EPA_HousingBurden30_Figure_gg, tooltip="text")
+
+
+```
+
+
+```{r  Renter Housing Burden 40}
+
+# we want to filter for people who spend more than 40% of income on rent (regardless of income)
+
+EPA_RentBurden40 <- 
+  rent_housingcost %>% 
+  mutate(
+    burden_count =
+      ifelse(
+        grossrent_perc %in% c(
+          "40.0 to 49.9 percent",
+          "50.0 percent or more"
+        ),
+        estimate,
+        NA
+      )
+  ) %>% 
+  group_by(house_income) %>% 
+  summarize(
+    burdened_sum = sum(burden_count, na.rm = T),
+    total_pop = sum(estimate, na.rm = T)
+  ) %>% 
+  mutate(
+    percent_burdened = round(burdened_sum/total_pop*100,2)
+  ) %>% 
+  filter(!is.na(percent_burdened)) %>% 
+  mutate(
+    tenure = "Renter-Occupied Housing"
+  )
+
+```
+
+```{r Owner Occupied Burden 40}
+
+# filter for people who spend more than 40% of their income on housing
+EPA_OwnerCostBurden40 <- 
+  owner_housingcost %>% 
+  mutate(
+    burden_count =
+      ifelse(
+        gross_housecost_perc %in% c(
+          "40.0 to 49.9 percent",
+          "50.0 percent or more"
+        ),
+        estimate,
+        NA
+      )
+  ) %>% 
+  group_by(house_income) %>% 
+  summarize(
+    burdened_sum = sum(burden_count, na.rm = T),
+    total_pop = sum(estimate, na.rm = T)
+  ) %>% 
+  mutate(
+    percent_burdened = round(burdened_sum/total_pop*100,2)
+  ) %>% 
+  filter(!is.na(percent_burdened)) %>% 
+  mutate(
+    tenure = "Owner-Occupied Housing"
+  )
+
+```
+
+```{r Combining Dataframes 40}
+
+EPA_CombinedBurden40 <- rbind(EPA_OwnerCostBurden40, EPA_RentBurden40)
+  
+```
+
+```{r Visualizing Plots 40}
+
+EPA_HousingBurden40_Figure_gg <- EPA_CombinedBurden40 %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = house_income %>% factor(levels = c("Less than $10,000:", "$10,000 to $19,999:", "$20,000 to $34,999:", "$35,000 to $49,999:", "$50,000 to $74,999:", "$75,000 to $99,999:", "$100,000 to $149,999:","$100,000 or more:", "$150,000 or more:")),
+      y = percent_burdened,
+      fill = tenure,
+      text = percent_burdened 
+    ),
+    stat = "identity",
+    position = "dodge"
+  )+
+  labs(
+    x = "Household Income", 
+    y = "Percent Housing Burden",
+    title = "EPA Percent Housing Cost Burdened >= 40% by Tenure",
+    fill = "Tenure"
+  ) +
+  coord_flip()
+
+EPA_HousingBurden40_Figure <- ggplotly(EPA_HousingBurden40_Figure_gg, tooltip="text")
+
+```
+
+
+```{r  Renter Housing Burden 50}
+
+# we want to filter for people who spend more than 50% of income on rent (regardless of income)
+
+EPA_RentBurden50 <- 
+  rent_housingcost %>% 
+  mutate(
+    burden_count =
+      ifelse(
+        grossrent_perc %in% c(
+          "50.0 percent or more"
+        ),
+        estimate,
+        NA
+      )
+  ) %>% 
+  group_by(house_income) %>% 
+  summarize(
+    burdened_sum = sum(burden_count, na.rm = T),
+    total_pop = sum(estimate, na.rm = T)
+  ) %>% 
+  mutate(
+    percent_burdened = round(burdened_sum/total_pop*100,2)
+  ) %>% 
+  filter(!is.na(percent_burdened)) %>% 
+  mutate(
+    tenure = "Renter-Occupied Housing"
+  )
+
+```
+
+```{r Owner Occupied Burden 50}
+
+# filter for people who spend more than 50% of their income on housing
+EPA_OwnerCostBurden50 <- 
+  owner_housingcost %>% 
+  mutate(
+    burden_count =
+      ifelse(
+        gross_housecost_perc %in% c(
+          "50.0 percent or more"
+        ),
+        estimate,
+        NA
+      )
+  ) %>% 
+  group_by(house_income) %>% 
+  summarize(
+    burdened_sum = sum(burden_count, na.rm = T),
+    total_pop = sum(estimate, na.rm = T)
+  ) %>% 
+  mutate(
+    percent_burdened = round(burdened_sum/total_pop*100,2)
+  ) %>% 
+  filter(!is.na(percent_burdened)) %>% 
+  mutate(
+    tenure = "Owner-Occupied Housing"
+  )
+
+```
+
+```{r Combining Dataframes 50}
+
+EPA_CombinedBurden50 <- rbind(EPA_OwnerCostBurden50, EPA_RentBurden50)
+  
+```
+
+```{r Visualizing Plots 50}
+
+EPA_HousingBurden50_Figure_gg <- EPA_CombinedBurden50 %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = house_income %>% factor(levels = c("Less than $10,000:", "$10,000 to $19,999:", "$20,000 to $34,999:", "$35,000 to $49,999:", "$50,000 to $74,999:", "$75,000 to $99,999:", "$100,000 to $149,999:","$100,000 or more:", "$150,000 or more:")),
+      y = percent_burdened,
+      fill = tenure,
+      text = percent_burdened 
+    ),
+    stat = "identity",
+    position = "dodge"
+  )+
+  labs(
+    x = "Household Income", 
+    y = "Percent Housing Burden",
+    title = "EPA Percent Housing Cost Burdened >= 50% by Tenure",
+    fill = "Tenure"
+  ) +
+  coord_flip()
+
+EPA_HousingBurden50_Figure <- ggplotly(EPA_HousingBurden50_Figure_gg, tooltip="text")
+
+
+
+```
+
+
+
+```{r START OF PARCEL}
+
+```
+
+
+```{r data}
+# pulling parcels off website or load from save if not first time (should be fine to run from github folder)
+#epa_zoning <- esri2sf("https://services8.arcgis.com/0IC8hha3hgQkmGoa/arcgis/rest/services/EastPaloAltoZoning_2021_WFL1/FeatureServer/1")
+#write_rds(epa_zoning, "data/epa_zoning.rds")
+epa_zoning <- read_rds("data/epa_zoning.rds")
+
+
+# pulling assessor data or load from save if not first time (should be fine to run from github folder)
+#smc_exemption <- read_csv("https://datahub.smcgov.org/api/views/pmvw-bs84/rows.csv?accessType=DOWNLOAD")
+#write_rds(smc_exemption, "data/smc_exemption.rds")
+smc_exemption <- read_rds("data/smc_exemption.rds")
+
+# joining parcel data to assessor data
+epa_exemption <- smc_exemption %>% 
+  mutate(
+    # change assessor data's APN to match parcels for joining
+    APN = `Parcel Number` %>% 
+      str_replace_all("-","")
+  ) %>% 
+  filter(APN %in% epa_zoning$APN) %>% 
+  left_join(epa_zoning) %>% 
+  st_as_sf() %>% 
+  # filtering to only low density residential housing (single family)
+  filter(New_Zone == "R-LD")
+```
+
+```{r parcle map}
+
+# renter v non renter for year 2018/2019
+
+tenure_map <- leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = epa_exemption %>% 
+      filter(`Fiscal Year` == "2018/2019")%>% # can change year plotted here
+      filter(Exemption %in% c(0)),
+    fillColor = "yellow",
+    color = "black",
+    weight = 0.5,
+    group = "Renter Occupied Single Family"
+  ) %>% 
+  
+  addPolygons(
+    data = epa_exemption %>% 
+      filter(`Fiscal Year` == "2018/2019") %>% # can change year plotted here
+      filter(Exemption %in% c(5600,7000)),
+    fillColor = "blue",
+    color = "black",
+    weight = 0.5,
+    fillOpacity = 1,
+    group = "Owner Occupied Single Family"
+  )%>%
+  
+  addLayersControl(
+    overlayGroups = c("Renter Occupied Single Family", "Owner Occupied Single Family"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+
+```
+
+
+```{r owner_renter_trends}
+
+epa_exemption_singleUnit_trend <- epa_exemption %>%
+  # adding var to distinguish rented v owned
+  mutate(
+    Tenure = case_when(
+      Exemption %in% c(5600,7000) ~ "Owner Occupied",
+      Exemption == FALSE ~ "Rented" #identifying exemptions of $0 as rented
+    )
+  ) %>%
+  
+  filter(!is.na(Tenure)) %>%
+  
+  # removing geometry
+  st_set_geometry(
+    NULL
+  ) %>%
+  
+  select(
+    Tenure, `Fiscal Year`
+  ) %>%
+  
+  group_by(
+    Tenure, `Fiscal Year`
+  )%>%
+  
+  # creating count of each tenure for each year
+  summarize(`Household Count`=n()) %>%
+  
+  # adding percentages of each year
+  ungroup() %>%
+  group_by(`Fiscal Year`) %>%
+  mutate(`Percent (%)` = paste0(round(`Household Count`/sum(`Household Count`) * 100,digits=2),"%"))
+
+```
+
+```{r, include=FALSE}
+
+# this isnt a nice print out, but if you wanted the table in the knitted doc, this could do that
+epa_exemption_singleUnit_trend
+```
+
+```{r plot_ownership_rent_trend}
+
+owner_renter_trend_ggplot <- 
+    epa_exemption_singleUnit_trend %>%
+  
+  # making fiscal year a numeric continuous variable for line chart
+  mutate(
+    year = case_when(
+      `Fiscal Year` == "2015/2016" ~ 2015, 
+      `Fiscal Year` == "2016/2017" ~ 2016,
+      `Fiscal Year` == "2017/2018" ~ 2017,
+      `Fiscal Year` == "2018/2019" ~ 2018,
+    )
+  ) %>% 
+  
+  # plot
+  group_by(Tenure) %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = year,
+      y = `Household Count`,
+      color = Tenure,
+      group = Tenure,
+      text = `Percent (%)`
+    )
+  ) +
+  labs(
+    x = "First Identifying Year of Fiscal Year",
+    y = "Count of Households",
+    title = "Owner-Renter Trends from 2015/2016-2018/2019",
+    color = "Tenure Type"
+  ) 
+
+
+  # Adding the following renames to proper fiscal year, but removes axis b/c labeling numbers with strings, seems an unavoidable problem b/c either I list x as a factor and the data doesn't plot, I change the labels and the axis disappears, or the axis labels aren't quite right. 
+
+  #scale_x_discrete(breaks = c("2015", "2016", "2017", "2018"),
+  #                 labels=c("2015/2016", "2016/2017", "2017/2018", "2018/2019"))
+
+
+owner_renter_trend_plot <- ggplotly(owner_renter_trend_ggplot, tooltip="text")
+
+
+
+```
+
+
+```{r Change_of_Hands}
+
+CoH_epa_exemption <- epa_exemption %>% # to look at this dataframe best, sort by Parcel Number
+  
+  select(
+    `Fiscal Year`, `Parcel Number`, `Assessed Value`, Exemption
+  ) %>%
+  
+  group_by(`Parcel Number`) %>%
+  
+  
+  mutate(
+    # determining increase in assessed value of a parcel from year to year for each household
+    increase_value = (`Assessed Value` - lag(`Assessed Value`)) / lag(`Assessed Value`),
+    
+    # marking property as sold if there was an assessed value increase over 5%
+    prop_sold = case_when(
+      increase_value > 0.05 ~ "sold"
+    ),
+    
+    # marking if change of hands lead to change in owner occupied or renter 
+    CoH_type = case_when(
+      prop_sold == "sold" & Exemption > 0 & lag(Exemption) > 0 ~ "Remained Owner \nOccupied",
+      prop_sold == "sold" & Exemption == 0 & lag(Exemption) == 0 ~ "Remained Renter \nOccupied",
+      prop_sold == "sold" & Exemption > 0 & lag(Exemption) == 0 ~ "Became Owner \nOccupied",
+      prop_sold == "sold" & Exemption == 0 & lag(Exemption) > 0 ~ "Became Renter \nOccupied",
+    )
+  ) 
+  
+
+
+```
+
+```{r CoH_trend}
+
+# summarize to get count of CoH type per year
+
+CoH_epa_exemption_trend <- CoH_epa_exemption %>%
+
+  # removing geometry
+  st_set_geometry(
+    NULL
+  ) %>%
+  
+  select(
+    CoH_type, `Fiscal Year`
+  ) %>%
+  
+  # removing properties which were not sold
+  filter(
+    !is.na(CoH_type)
+  ) %>%
+  
+  group_by(
+    CoH_type, `Fiscal Year`
+  )%>%
+  
+  # creating count of each CoH type for each year
+  summarize(`Property Sale Count`=n()) %>%
+  
+  # adding percentages of each year
+  ungroup() %>%
+  group_by(`Fiscal Year`) %>%
+  mutate(
+    percent = round(`Property Sale Count`/sum(`Property Sale Count`) * 100,digits=2),
+    `Percent (%)` = paste0(round(`Property Sale Count`/sum(`Property Sale Count`) * 100,digits=2),"%"))
+
+CoH_epa_exemption_total_trend <- CoH_epa_exemption_trend%>%
+  group_by(`Fiscal Year`) %>%
+  summarise(`Total Property Sale` = sum(`Property Sale Count`))
+
+
+```
+
+```{r, include=FALSE}
+
+# this isnt a nice print out, but if you wanted the table in the knitted doc, this could do that
+CoH_epa_exemption_trend
+CoH_epa_exemption_total_trend
+```
+
+```{r CoH_plot}
+
+CoH_trend_ggplot <- 
+    CoH_epa_exemption_trend %>%
+  
+  # making fiscal year a numeric continuous variable for line chart
+  mutate(
+    year = case_when(
+      `Fiscal Year` == "2015/2016" ~ 2015, 
+      `Fiscal Year` == "2016/2017" ~ 2016,
+      `Fiscal Year` == "2017/2018" ~ 2017,
+      `Fiscal Year` == "2018/2019" ~ 2018,
+    )
+  ) %>% 
+  
+  # plot
+  group_by(CoH_type) %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = year,
+      y = `Property Sale Count`,
+      color = CoH_type,
+      group = CoH_type,
+      text = `Property Sale Count`
+    )
+  ) +
+  labs(
+    x = "First Identifying Year of Fiscal Year",
+    y = "Count of Property Sales",
+    title = "Property Sale Trends from 2016/2017-2018/2019",
+    color = "Change of Hands Type"
+  ) + scale_x_continuous(breaks=c(2016, 2017, 2018))
+
+
+  # Adding the following renames to proper fiscal year, but removes axis b/c labeling numbers with strings, seems an unavoidable problem b/c either I list x as a factor and the data doesn't plot, I change the labels and the axis disappears, or the axis labels aren't quite right. 
+
+  #scale_x_discrete(breaks = c("2015", "2016", "2017", "2018"),
+  #                 labels=c("2015/2016", "2016/2017", "2017/2018", "2018/2019"))
+
+
+CoH_trend_plot <- ggplotly(CoH_trend_ggplot, tooltip="text")
+
+
+
+```
+
+
+```{r CoH_plot_perc}
+
+CoH_trend_ggplot_perc <- 
+    CoH_epa_exemption_trend %>%
+  
+  # making fiscal year a numeric continuous variable for line chart
+  mutate(
+    year = case_when(
+      `Fiscal Year` == "2015/2016" ~ 2015, 
+      `Fiscal Year` == "2016/2017" ~ 2016,
+      `Fiscal Year` == "2017/2018" ~ 2017,
+      `Fiscal Year` == "2018/2019" ~ 2018,
+    )
+  ) %>% 
+  
+  # plot
+  group_by(CoH_type) %>%
+  ggplot() +
+  geom_line(
+    aes(
+      x = year,
+      y = percent,
+      color = CoH_type,
+      group = CoH_type,
+      text = `Percent (%)`
+    )
+  ) +
+  labs(
+    x = "First Identifying Year of Fiscal Year",
+    y = "Percent of Property Sales (%)",
+    title = "Property Sale Trends from 2016/2017-2018/2019",
+    color = "Change of Hands Type"
+  ) + scale_x_continuous(breaks=c(2016, 2017, 2018))
+
+
+  # Adding the following renames to proper fiscal year, but removes axis b/c labeling numbers with strings, seems an unavoidable problem b/c either I list x as a factor and the data doesn't plot, I change the labels and the axis disappears, or the axis labels aren't quite right. 
+
+  #scale_x_discrete(breaks = c("2015", "2016", "2017", "2018"),
+  #                 labels=c("2015/2016", "2016/2017", "2017/2018", "2018/2019"))
+
+
+CoH_trend_plot_perc <- ggplotly(CoH_trend_ggplot_perc, tooltip="text")
+
+
+
+```
+
+
+## East Palo Alto Opportunity to Purchase Act Analysis
+
+In the following document I explore my thoughts on the implementation of the  Opportunity to Purchase Act(OPA) in East Palo Alto (EPA). I broke my analysis into two parts, my initial opinion following review of the documents and public meetings associated with OPA, and my opinion following a numeric analysis of Housing in EPA. 
+
+
+### Initial Opinion
+
+Upon my initial exploration of EPA OPA, I found myself very in favor of the ordinance. A new strategy municipalities can use in efforts towards social and racial equity alongside gentrification and displacement seemed holistically beneficial. In my analysis, I saw concerns of creating difficulties for landlords, realtors, and people selling homes largely focused on difficulties of selling homes on a longer time scale which would be created by the offering process. There was also some concerns of loopholes and the ordinance not actually helping low-income community members, though I did not understand the full basis of this concern. It seemed most of the concerned parties were individuals who did not necessarily live in the community like landlords and realtors (who in my opinion should have less influence due to their lower stake) and the single-family owner-occupied households who had been falsely rallied in the first two parties' cause. I found this particularly frustrating because the opposition created a narrative that this would likely affect all single-family homeowners, when in reality owner-occupied single-family residences were automatically excluded from the ordinance, so long as they had not been vacant for more than 6 months and owner occupied for the past year. 
+
+This rallying of single-family property owners to what I felt was a largely false cause led me to targeting my analysis on single-family properties, as I thought this was the largest audience who could realistically be swayed by evidence. I do not believe the core stakeholders of each side (landlords, realtors v non-profits) could not be swayed as their difference of opinion is one of morals and values, juxtaposing community equity and reducing gentrification and displacement against monetary capitalistic gains of an individual. I do believe that if shown the encroachment and loss of property over time, some of the owner-occupied single-family opposition may be swayed, in hopes of preserving their community and reducing displacement through OPA.
+
+
+### Numeric Analysis
+
+To begin to establish an understanding of the situation, I performed a parcel analysis in which I evaluated tenure and change-of-hands trends for single-family properties in EPA. In order to identify these properties, I relied on zoning data, focusing on low density residential housing. Further to identify owner-occupied (OO) as opposed to renter-occupied (RO), I noted any tax exemptions, using exemptions of $5600 and $7000 to identify OO and exemptions of $0 to identify RO. It is important to note these assumptions as they are not necessarily perfect but will give a fair estimate. An initial plot of OO and RO properties demonstrates a fairly homogeneous spread of the two together, as can be seen bellow for the fiscal year 2018/2019. This does not inherently influence my opinion but was informative to see. 
+
+```{r}
+tenure_map
+```
+
+Following this I performed a general tenure trend analysis over the four fiscal years which were represented in the data, which can be seen below. I was surprised to see that more properties were RO than OO and that this gap was appearing to only grow over the years, increasing by 6% over the four fiscal years which can be seen by hovering over the lines on the plot. This finding drove me more in support of OPA as a safeguard against gentrification and displacement which I feel is demonstrated by the increase in rented property.
+
+```{r}
+owner_renter_trend_plot
+```
+
+The next analysis I took interest in was a change of hands analysis. Clearly more properties were transforming from OO to RO from the above plot, but I was interested in a more thorough break down of these fluctuations and changes in property ownership. Seen below is two plots, the first looking at a count of change-of-hand transaction and the second looking at the trend of percentages. 
+
+```{r}
+CoH_trend_plot
+CoH_trend_plot_perc
+```
+
+My key take-aways from the above plot is that most transactions are within RO properties, but still these transactions only pertain to less than 10% of rental properties. This largely dissuades some of my concern regarding depleting the total rental property pool, as a small fraction of the properties is ever up for sale and not all properties will be purchased by OPA potential buyers. Additionally, I think it is very interesting that the percentage trends indicate an increase in properties changing hands between OO and RO as opposed to staying constant. Ultimately, in consideration of influencing peoples' opinion on OPA, I think it is most noteworthy in driving home that renter occupied properties are a good target for the ordinance as they change hands the most.
+
+
+The final analysis I considered was a housing burden anlysis. This analysis was performed for the whole of EPA and I have included plots representing three levels of housing burden below, 30%, 40%, and 50%.
+
+```{r}
+EPA_HousingBurden30_Figure
+EPA_HousingBurden40_Figure
+EPA_HousingBurden50_Figure
+```
+
+These plots were the evidence which most significantly undermines my opinion. In the plots most brackets do have renters as more housing burdened, but in all three plots, the two lowest income brackets show home owners as consistently more severely housing burdened. This causes some concern for me as the goal of OPA is to help low-income groups gain wealth, but as the lowest income groups are housing burdened when owning property, this opportunity for ownership may not in fact help, but drive them into further housing burden, 
+
+
+### Conclusion 
+
+Ultimately, from my analyses, my two key take-aways are that owner occupied properties are decreasing and homeownership causes more burden in the lowest income tiers. These key points cause some dissonance in my opinions on the implementation of OPA. On one hand, I see it as an opportunity to drive up the amount owner-occupied units in EPA and in giving more families the opportunity to own land, also give them the opportunity to accrue wealth. On the other hand, seeing that the lowest income brackets have owner-occupied homes facing more rent burden, I would be concerned that OPA may increase this population of low-income owner-occupied homes facing rent burden. In the end, I do feel OPA would be a beneficial ordinance to implement for EPA.
+
+
+
+
+
+
+
+
+
