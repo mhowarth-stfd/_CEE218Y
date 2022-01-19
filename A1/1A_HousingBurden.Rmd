@@ -22,13 +22,14 @@ setwd('C:/Users/mouse/OneDrive - Stanford/MS2/WinterQ/218Y/Land Use')
 
 Sys.setenv(CENSUS_KEY = "30f44d95cb0d8c10acfc57d830d39957dbfe8a39")
 
-acs_vars_2019_5yr <- 
-  listCensusMetadata(
-    name = "2019/acs/acs5",
-    type = "variables"
-  )
+# acs_vars_2019_5yr <- 
+#   listCensusMetadata(
+#     name = "2019/acs/acs5",
+#     type = "variables"
+#   )
 
-saveRDS(acs_vars_2019_5yr, "acs_vars_2019_5yr.rds")
+# saveRDS(acs_vars_2019_5yr, "acs_vars_2019_5yr.rds")
+acs_vars_2019_5yr <- readRDS("acs_vars_2019_5yr.rds")
 
 ```
 housing costs censuses: B25074 (household income by gross rent as a % of income) and B25095 (monthly owner costs as % of income)
@@ -100,7 +101,10 @@ EPA_RentBurden <-
   mutate(
     percent_burdened = burdened_sum/total_pop*100
   ) %>% 
-  filter(!is.na(percent_burdened))
+  filter(!is.na(percent_burdened)) %>% 
+  mutate(
+    tenure = "Renter-Occupied Housing"
+  )
 
 ```
 
@@ -167,67 +171,41 @@ EPA_OwnerCostBurden <-
   mutate(
     percent_burdened = burdened_sum/total_pop*100
   ) %>% 
-  filter(!is.na(percent_burdened))
-
-```
-
-```{r Combining Dataframes}
-EPA_CombinedBurden <- rent_housingcost %>% 
-  left_join(owner_housingcost, by = c("cbg"="cbg",
-                                      "house_income"="house_income",
-                                      "grossrent_perc"="gross_housecost_perc")) %>% 
+  filter(!is.na(percent_burdened)) %>% 
   mutate(
-    burden_count =
-      ifelse(
-        grossrent_perc %in% c(
-          "30.0 to 34.9 percent",
-          "35.0 to 39.9 percent",
-          "40.0 to 49.9 percent",
-          "50.0 percent or more"
-        ),
-        estimate.x + estimate.y,
-        NA
-      )
-  ) %>% 
-  group_by(house_income) %>% 
-  summarize(
-    burdened_sum = sum(burden_count, na.rm = T), 
-    total_pop = sum(estimate.x+estimate.y, na.rm = T),
-    rent_perc = sum(estimate.y/total_pop*100, na.rm = T),
-    owner_perc = sum(estimate.x/total_pop*100, na.rm = T)
-  ) %>% 
-  mutate(
-    percent_burdened=burdened_sum/total_pop*100
+    tenure = "Owner-Occupied Housing"
   )
 
 ```
 
+```{r Combining Dataframes}
+EPA_CombinedBurden <- rbind(EPA_OwnerCostBurden, EPA_RentBurden)
+  
+```
+
 
 ```{r Visualizing Plots}
-OwnerBurden <- ggplot(EPA_OwnerCostBurden, aes(x=house_income, y = percent_burdened)) +
-  geom_bar(stat = "identity"
-  ) + 
+
+EPA_HousingBurden_Figure <- EPA_CombinedBurden %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = house_income %>% factor(levels = c("Less than $10,000:", "$10,000 to $19,999:", "$20,000 to $34,999:", "$35,000 to $49,999:", "$50,000 to $74,999:", "$75,000 to $99,999:", "$100,000 to $149,999:","$100,000 or more:", "$150,000 or more:")),
+      y = percent_burdened,
+      fill = tenure 
+    ),
+    stat = "identity",
+    position = "dodge"
+  )+
   labs(
-    x = "Income Bracket", 
-    y = "Percent Burdened",
-    title = "Percent Burdened Among Owner-Occupied Homes"
+    x = "Household Income", 
+    y = "Percent Housing Burden",
+    title = "EPA Percent Housing Cost Burdened by tenure",
+    fill = "Tenure"
   ) +
-  theme(axis.text.x = element_text(angle = -45, vjust = .5, hjust = .5))
-  
+  coord_flip()
 
-RenterBurden <- ggplot(EPA_RentBurden, aes(x=house_income, y = percent_burdened)) +
-  geom_bar(stat = "identity") + scale_fill_hue(c = 40) + theme(legend.position = "none")+
-    labs(
-    x = "Income Bracket", 
-    y = "Percent Burdened",
-    title = "Percent Burdened Among Renter-Occupied Homes"
-    ) +
-  theme(axis.text.x = element_text(angle = -45, vjust = .5, hjust = .5))
-
-
-
-OwnerBurden
-RenterBurden
+EPA_HousingBurden_Figure
 
 ```
 
