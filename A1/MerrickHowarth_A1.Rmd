@@ -790,7 +790,7 @@ CoH_trend_plot_perc
 My key take-aways from the above plot is that most transactions are within RO properties, but still these transactions only pertain to less than 10% of rental properties. This largely dissuades some of my concern regarding depleting the total rental property pool, as a small fraction of the properties is ever up for sale and not all properties will be purchased by OPA potential buyers. Additionally, I think it is very interesting that the percentage trends indicate an increase in properties changing hands between OO and RO as opposed to staying constant. Ultimately, in consideration of influencing peoples' opinion on OPA, I think it is most noteworthy in driving home that renter occupied properties are a good target for the ordinance as they change hands the most.
 
 
-The final analysis I considered was a housing burden anlysis. This analysis was performed for the whole of EPA and I have included plots representing three levels of housing burden below, 30%, 40%, and 50%.
+The final analysis I considered was a housing burden analysis. This analysis was performed for the whole of EPA and I have included plots representing three levels of housing burden below, 30%, 40%, and 50%.
 
 ```{r}
 EPA_HousingBurden30_Figure
