@@ -1,0 +1,81 @@
+---
+title: "A2"
+output: html_document
+---
+## headers in a code groups for now
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = F, message = FALSE)
+```
+
+
+
+```{r libraries}
+library(tidyverse)
+library(sf)
+library(tigris)
+library(censusapi)
+library(mapview)
+library(leaflet)
+library(mapboxapi)
+
+Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
+```
+
+## POI Maintenance
+```{r GD POIs}
+pois <- st_read("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/gis_osm_pois_a_free_1.shp") # will need to change for windows
+```
+
+```{r}
+pois_filter <- pois %>% 
+  rename(amenity = fclass) %>% 
+  filter(amenity %in% c(
+    "park",
+    "convenience",
+    "restaurant",
+    "supermarket",
+    "library"
+  ))
+
+pois_summary <- pois %>% 
+  st_drop_geometry() %>% 
+  group_by(fclass) %>% 
+  count() %>% 
+  arrange(desc(n))
+
+pois_summary
+
+mapview(pois_filter, zcol = "amenity")
+
+```
+
+```{r}
+saveRDS(pois_filter, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/pois_filter.rds")
+pois_filter <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/pois_filter.rds")
+```
+
+
+## Area of Interest - 
+```{r place to blocks}
+
+alm_cbgs <- block_groups("CA","Alameda")
+
+Oak_boundary <- places("CA") %>% 
+  filter(NAME == "Oakland")
+
+Oak_cbgs <- alm_cbgs %>% 
+  st_centroid() %>% 
+  .[Oak_boundary, ] %>% 
+  st_drop_geometry() %>% 
+  left_join(alm_cbgs %>% select(GEOID)) %>% 
+  st_as_sf()
+
+mapview(Oak_cbgs)
+
+WOak_cbgs <- Oak_cbgs[c(87, 86, 88, 95, 159, 103, 102, 38, 41, 40, 39, 34, 169, 106, 105, 104, 101, 288, 290, 289, 37, 36, 35),]
+
+mapview(WOak_cbgs)
+```
+
