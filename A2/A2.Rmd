@@ -124,6 +124,12 @@ isochrones <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC
 ```
 
 
+```{r just a few maps}
+mapview(WOak_blk)
+mapview(isochrones %>% filter(mode == "walking"))
+mapview(pois_filter, zcol = "amenity")
+```
+
 
 
 
