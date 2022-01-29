@@ -1,6 +1,8 @@
 ---
 title: "A2"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 ## headers in a code groups for now
 
@@ -21,6 +23,10 @@ library(leaflet)
 library(mapboxapi)
 
 Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
+
+# mac path to A2 data: Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/ "file"
+
+# mac path to A2 data: /Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/ "file"
 ```
 
 ## POI Maintenance
@@ -29,30 +35,37 @@ pois <- st_read("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/gis_os
 ```
 
 ```{r}
-pois_filter <- pois %>% 
-  rename(amenity = fclass) %>% 
-  filter(amenity %in% c(
-    "park",
-    "convenience",
-    "restaurant",
-    "supermarket",
-    "library"
-  ))
-
-pois_summary <- pois %>% 
-  st_drop_geometry() %>% 
-  group_by(fclass) %>% 
-  count() %>% 
-  arrange(desc(n))
-
-pois_summary
-
-mapview(pois_filter, zcol = "amenity")
+# pois_filter <- pois %>% 
+#   rename(amenity = fclass) %>% 
+#   filter(amenity %in% c(
+#     "community_centre",
+#     "convenience",
+#     "fast_food",
+#     "supermarket",
+#     "park", 
+#     # "green grocer", was not captured in poi data for bay area
+#     "playground",
+#     "kindergarten",
+#     "school",
+#     "library"#,
+#     #"tram_stop", was not captured in poi data for bay area
+#     #"bus_stop" was not captured in poi data for bay area
+#   ))
+# 
+# pois_filter_summary <- pois_filter %>% 
+#   st_drop_geometry() %>% 
+#   group_by(amenity) %>% 
+#   count() %>% 
+#   arrange(desc(n))
+# 
+# pois_filter_summary
+# 
+# mapview(pois_filter, zcol = "amenity")
 
 ```
 
 ```{r}
-saveRDS(pois_filter, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/pois_filter.rds")
+# saveRDS(pois_filter, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/pois_filter.rds")
 pois_filter <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/pois_filter.rds")
 ```
 
@@ -60,22 +73,71 @@ pois_filter <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJf
 ## Area of Interest - 
 ```{r place to blocks}
 
-alm_cbgs <- block_groups("CA","Alameda")
+# alm_cbgs <- block_groups("CA","Alameda")
+# 
+# Oak_boundary <- places("CA") %>% 
+#   filter(NAME == "Oakland")
+# 
+# Oak_cbgs <- alm_cbgs %>% 
+#   st_centroid() %>% 
+#   .[Oak_boundary, ] %>% 
+#   st_drop_geometry() %>% 
+#   left_join(alm_cbgs %>% select(GEOID)) %>% 
+#   st_as_sf()
+# 
+# #mapview(Oak_cbgs)
+# 
+# WOak_cbgs <- Oak_cbgs[c(87, 86, 88, 95, 159, 103, 102, 38, 41, 40, 39, 34, 169, 106, 105, 104, 101, 288, 290, 289, 37, 36, 35),] # pulled from map of block groups
+# 
+# alm_blk <- blocks("CA","Alameda")
+# 
+# WOak_blk <- alm_blk %>% 
+#   st_centroid() %>% 
+#   .[WOak_cbgs, ] %>% 
+#   st_drop_geometry() %>% 
+#   left_join(alm_blk %>% select(GEOID10)) %>% 
+#   st_as_sf()
+# 
+# mapview(WOak_blk)
+# 
+# saveRDS(WOak_blk, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WestOaklandBlocks.rds")
 
-Oak_boundary <- places("CA") %>% 
-  filter(NAME == "Oakland")
+WOak_blk <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WestOaklandBlocks.rds")
 
-Oak_cbgs <- alm_cbgs %>% 
-  st_centroid() %>% 
-  .[Oak_boundary, ] %>% 
-  st_drop_geometry() %>% 
-  left_join(alm_cbgs %>% select(GEOID)) %>% 
-  st_as_sf()
-
-mapview(Oak_cbgs)
-
-WOak_cbgs <- Oak_cbgs[c(87, 86, 88, 95, 159, 103, 102, 38, 41, 40, 39, 34, 169, 106, 105, 104, 101, 288, 290, 289, 37, 36, 35),]
-
-mapview(WOak_cbgs)
 ```
+
+
+```{r}
+# isochrones <- c("walking","cycling","driving") %>%
+#   map_dfr(function(x){
+#     mb_isochrone(
+#       WOak_blk,
+#       profile = x,
+#       time = c(5,10,15)
+#     ) %>%
+#       mutate(mode = x)
+# })
+```
+```{r}
+# saveRDS(isochrones, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WOak_isochrones.rds")
+isochrones <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WOak_isochrones.rds")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
