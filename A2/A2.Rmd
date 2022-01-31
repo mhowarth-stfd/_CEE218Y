@@ -26,13 +26,13 @@ library(tidytransit)
 
 Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
 
-# mac path to A2 data: Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/ "file"
+# mac path to A2 data: /Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/ "file"
 
 # mac path to A2 data: /Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/ "file"
 
 ## adding 'path_item' for easy retrieval
-path_data <- "G:/My Drive/218Y/Assignments/2A/data/"
-path_pois <- "G:/Shared drives/SFBI/Data Library/OSM/"
+path_data <-  "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/" #"G:/My Drive/218Y/Assignments/2A/data/"
+path_pois <- "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/" #"G:/Shared drives/SFBI/Data Library/OSM/"
 
 
 
@@ -162,6 +162,7 @@ stops_all <- gtfs$stops %>%
 # visualize the stops
 mapview(stops_all)
 
+
 # spatially filter for all stops within walking isochrones
 stops_walk <- stops_all %>% 
   .[isochrones_walking,] %>% 
@@ -177,7 +178,18 @@ stops_walk <- stops_all %>%
 mapview(stops_walk)
 mapview(stops_cycle)
 
+# Looking back, when you save something you shouldn't include a var name, that may be the issue
 stops_walk <- saveRDS(stops_walk, paste0(path_data,"stops_walk.rds")) # having trouble saving this
+
+## attempt to add stops to POI
+
+stops_poi <- stops_walk %>%
+  transmute(osm_id = stop_id, code = NA, amenity = "transit_stop", name=stop_name, geometry=geometry)
+
+full_pois <- rbind(pois_filter,stops_poi)
+
+#saveRDS(full_pois, paste0(path_data,"full_pois.rds"))
+full_pois <- readRDS(paste0(path_data,"full_pois.rds"))
 
 ## don't need the section below; starts to get at including transit rides for our isochrones
 
@@ -204,15 +216,38 @@ stops_walk <- saveRDS(stops_walk, paste0(path_data,"stops_walk.rds")) # having t
 sf::sf_use_s2(FALSE)
 access_raw <- isochrones %>%
   st_make_valid() %>%
-  st_join(pois_filter) %>%
-  st_join(stops_walk) %>% # ran into memory issues trying to add this here. Lmk if you're able to get this! 
+  st_join(full_pois) %>%
   st_drop_geometry()
 
 access_raw <- access_raw %>%
-  filter(!is.na(osm_id))
+  filter(!is.na(osm_id)) %>%
+  
+  # removing all cycling and driving transit stops
+  filter(
+    ! ( (mode %in% c("cycling","driving")) & (amenity %in% c("transit_stop")) ) 
+         ) %>%
+  
+  #adding super market tag, if 1 is supermarket
+  mutate(
+    isSM_walk = case_when(
+      (mode %in% c("walking")) & (amenity %in% c("supermarket")) ~ 1,
+      TRUE ~ 0
+    ),
+    isSM_cycle = case_when(
+      (mode %in% c("cycling")) & (amenity %in% c("supermarket")) ~ 1,
+      TRUE ~ 0
+    ),
+    isSM_drive = case_when(
+      (mode %in% c("driving")) & (amenity %in% c("supermarket")) ~ 1,
+      TRUE ~ 0
+    )
+  )
+  
 
-saveRDS(access_raw, paste0(path_data,"access_raw.rds"))
-# access_raw <- readRDS(path_data, "access_raw.rds")
+
+#saveRDS(access_raw, paste0(path_data,"access_raw.rds"))
+
+access_raw <- readRDS(paste0(path_data, "access_raw.rds"))
 
 ```
 
@@ -273,12 +308,28 @@ complete_temp <- access_raw %>%
     amenity_rank = row_number()-1
   ) %>% 
   ungroup()
+# move crit amenity tag to end for legibility
+complete_temp <- complete_temp[, c(1,2,3,4,5,6,7,11,12,13,14,15,16,17,8,9,10)]
+
 
 # grabbing complete modes bc some NAs
-complete_modes <- complete_temp %>% 
+complete_modes_ungrouped <- complete_temp %>% 
   mutate(
     score = amenity_value * exp(-amenity_rank * amenity_decay) * exp(-time*mode_decay) * mode_value
-  ) %>% 
+  ) 
+
+# adding crit amenity flag, if != 0 then there is an accessible supermarket
+crit_amenity <- complete_modes_ungrouped %>%
+  group_by(id) %>%
+  summarize(
+    SM_walk = sum(isSM_walk, na.rm = T),
+    SM_cycle = sum(isSM_cycle, na.rm = T),
+    SM_drive = sum(isSM_drive, na.rm = T)
+  )
+  
+
+# summing mode scores
+complete_modes <- complete_modes_ungrouped %>%
   group_by(id, mode) %>%
   arrange(desc(score)) %>%
   filter(!duplicated(osm_id)) %>%
@@ -308,7 +359,33 @@ complete_total <- complete_temp %>%
 complete <- rbind(
   complete_modes,
   complete_total
-)
+) 
+
+# created formatted score for hover tool with super market flag (if there is a super market there is a star)
+complete_format <- complete %>% 
+  pivot_wider(
+    names_from = "mode",
+    values_from = "score"
+  ) %>%
+  cbind(select(crit_amenity, !id)) %>%
+  mutate(
+    `Walking Score` = case_when(
+      SM_walk > 0 ~ paste0(round(walking,2),"*"),
+      SM_walk == 0 ~ as.character(round(walking,2))
+    ),
+    `Cycling Score` = case_when(
+      SM_cycle > 0 ~ paste0(round(cycling,2),"*"),
+      SM_cycle == 0 ~ as.character(round(cycling,2))
+    ),
+    `Driving Score` = case_when(
+      SM_drive > 0 ~ paste0(round(driving,2),"*"),
+      SM_drive == 0 ~ as.character(round(driving,2))
+    ),
+    `Total Score` = case_when(
+      SM_drive > 0 ~ paste0(round(driving,2),"*"), # only need to check drive b/c largest area
+      SM_drive == 0 ~ as.character(round(driving,2))
+    )
+  ) 
 
 complete_map <- complete %>% 
   pivot_wider(
