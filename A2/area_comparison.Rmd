@@ -1,0 +1,88 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+sf_tracts_10 <- blocks("CA", "San Francisco", 2010)
+```
+
+```{r place to blocks}
+
+  alm_cbgs <- block_groups("CA","Alameda")
+  
+  Oak_boundary <- places("CA") %>% 
+    filter(NAME == "Oakland")
+  
+  Oak_cbgs <- alm_cbgs %>% 
+    st_centroid() %>% 
+    .[Oak_boundary, ] %>% 
+    st_drop_geometry() %>% 
+    left_join(alm_cbgs %>% select(GEOID)) %>% 
+    st_as_sf()
+  
+   mapview(Oak_cbgs)
+  
+  WOak_cbgs <- Oak_cbgs[c(87, 86, 88, 95, 159, 103, 102, 38, 41, 40, 39, 34, 169, 106, 105, 104, 101, 288, 290, 289, 37, 36, 35),]   #pulled from map of block groups
+  
+  alm_blk_10 <- blocks("CA","Alameda",2010)
+  
+  WOak_blk_10 <- alm_blk_10 %>% 
+    st_centroid() %>% 
+    .[WOak_cbgs, ] %>% 
+    st_drop_geometry() %>% 
+    left_join(alm_blk_10 %>% select(GEOID10)) %>% 
+    st_as_sf()
+  
+  alm_blk_20 <- blocks("CA","Alameda",2020)
+  
+  WOak_blk_20 <- alm_blk_20%>% 
+    st_centroid() %>% 
+    .[WOak_cbgs, ] %>% 
+    st_drop_geometry() %>% 
+    left_join(alm_blk_20 %>% select(GEOID20)) %>% 
+    st_as_sf()
+
+
+area_check <- WOak_blk_10 %>% 
+  st_transform(26910) %>% 
+  mutate(area_10 = st_area(.)) %>%
+  
+  
+  left_join(WOak_blk_20 %>%
+              st_transform(26910) %>%
+              mutate(area_20 = st_area(.)) %>% 
+              st_drop_geometry() %>% 
+              select(GEOID10 = GEOID20, area_20)) %>%
+  
+  mutate(delta = area_20 - area_10)
+
+map_check <- leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = WOak_blk_10,
+    stroke = T,
+    opacity = 0.5,
+    fill = F,
+    group = "Boundry Comparison"
+  ) %>% 
+  addPolygons(
+    data = WOak_blk_20,
+    color = "red",
+    stroke = T,
+    opacity = 0.5,
+    weight = 1,
+    fill = F,
+    group = "Boundry Comparison"
+  )
+
+
+
+  
+  
+```
