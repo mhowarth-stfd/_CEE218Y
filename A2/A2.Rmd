@@ -21,28 +21,37 @@ library(censusapi)
 library(mapview)
 library(leaflet)
 library(mapboxapi)
+# install.packages("tidytransit") ## be sure to install tidytransit if you want to run transit portions
+library(tidytransit)
 
 Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
 
 # mac path to A2 data: Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/ "file"
 
 # mac path to A2 data: /Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/ "file"
+
+## adding 'path_item' for easy retrieval
+path_data <- "G:/My Drive/218Y/Assignments/2A/data/"
+path_pois <- "G:/Shared drives/SFBI/Data Library/OSM/"
+
+
+
 ```
 
 ## POI Maintenance
 ```{r GD POIs}
-pois <- st_read("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/gis_osm_pois_a_free_1.shp") # will need to change for windows
+# pois <- st_read(paste0(path_pois,"gis_osm_pois_a_free_1.shp")) 
 ```
 
 ```{r}
-# pois_filter <- pois %>% 
-#   rename(amenity = fclass) %>% 
+# pois_filter <- pois %>%
+#   rename(amenity = fclass) %>%
 #   filter(amenity %in% c(
 #     "community_centre",
 #     "convenience",
 #     "fast_food",
 #     "supermarket",
-#     "park", 
+#     "park",
 #     # "green grocer", was not captured in poi data for bay area
 #     "playground",
 #     "kindergarten",
@@ -52,10 +61,10 @@ pois <- st_read("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/gis_os
 #     #"bus_stop" was not captured in poi data for bay area
 #   ))
 # 
-# pois_filter_summary <- pois_filter %>% 
-#   st_drop_geometry() %>% 
-#   group_by(amenity) %>% 
-#   count() %>% 
+# pois_filter_summary <- pois_filter %>%
+#   st_drop_geometry() %>%
+#   group_by(amenity) %>%
+#   count() %>%
 #   arrange(desc(n))
 # 
 # pois_filter_summary
@@ -66,7 +75,7 @@ pois <- st_read("/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/gis_os
 
 ```{r}
 # saveRDS(pois_filter, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/pois_filter.rds")
-pois_filter <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/pois_filter.rds")
+pois_filter <- readRDS(paste0(path_data,"pois_filter.rds"))
 ```
 
 
@@ -102,7 +111,7 @@ pois_filter <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJf
 # 
 # saveRDS(WOak_blk, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WestOaklandBlocks.rds")
 
-WOak_blk <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WestOaklandBlocks.rds")
+WOak_blk <- readRDS(paste0(path_data,"WestOaklandBlocks.rds"))
 
 ```
 
@@ -118,9 +127,10 @@ WOak_blk <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_b
 #       mutate(mode = x)
 # })
 ```
+
 ```{r}
 # saveRDS(isochrones, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WOak_isochrones.rds")
-isochrones <- readRDS("/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WOak_isochrones.rds")
+isochrones <- readRDS(paste0(path_data,"WOak_isochrones.rds"))
 ```
 
 
@@ -129,6 +139,190 @@ mapview(WOak_blk)
 mapview(isochrones %>% filter(mode == "walking"))
 mapview(pois_filter, zcol = "amenity")
 ```
+
+
+
+### transit data
+
+```{r}
+# grabbing GTFS data; can't find the zip file to line so I just downloaded the file and added it to our Gdrive data
+gtfs <- read_gtfs(paste0(path_data,"gtfs.zip"))
+
+# only including walking and biking isochrones bc people most likely aren't driving to a bus stop.
+isochrones_walking <- isochrones %>% 
+  filter(mode == "walking")
+
+isochrones_cycling <- isochrones %>% 
+  filter(mode == "cycling")
+
+# grabbing all the stops
+stops_all <- gtfs$stops %>% 
+  st_as_sf(coords = c("stop_lon", 
+                      "stop_lat"), crs = 4326)
+# visualize the stops
+mapview(stops_all)
+
+# spatially filter for all stops within walking isochrones
+stops_walk <- stops_all %>% 
+  .[isochrones_walking,] %>% 
+  select(c(stop_id, stop_name,geometry)) %>% 
+  mutate(mode = "walking") %>% 
+  st_as_sf()
+
+## stops within cycling isochrones if we wanted to include
+# stops_cycle <- stops_all %>% 
+#   .[isochrones_cycling,]
+
+# visualize stops within walking and cycling distance
+mapview(stops_walk)
+mapview(stops_cycle)
+
+stops_walk <- saveRDS(stops_walk, paste0(path_data,"stops_walk.rds")) # having trouble saving this
+
+## don't need the section below; starts to get at including transit rides for our isochrones
+
+# isochrones_firstmile <- isochrones_walking %>% 
+#   st_make_valid() %>% 
+#   st_join(stops_walk) %>% 
+#   st_drop_geometry() %>% 
+#   group_by(stop_id) %>% 
+#   arrange(time) %>% 
+#   filter(!duplicated(stop_id)) %>% 
+#   select(
+#     firstmile_time = time,
+#     id,
+#     from_stop_id = stop_id
+#   )
+
+
+
+```
+
+
+```{r}
+
+sf::sf_use_s2(FALSE)
+access_raw <- isochrones %>%
+  st_make_valid() %>%
+  st_join(pois_filter) %>%
+  st_join(stops_walk) %>% # ran into memory issues trying to add this here. Lmk if you're able to get this! 
+  st_drop_geometry()
+
+access_raw <- access_raw %>%
+  filter(!is.na(osm_id))
+
+saveRDS(access_raw, paste0(path_data,"access_raw.rds"))
+# access_raw <- readRDS(path_data, "access_raw.rds")
+
+```
+
+```{r load subjectivity data}
+#loading amenity pref. data from CSV file
+amenity_preference <- read.csv(paste0(path_data,"2A - amenity_preference.csv")) %>% 
+  select(-amenity_decay) %>% 
+  mutate(
+    amenity_decay = -log(.5)/amenity_quantity
+  )
+
+# loading mode pref from CSV file
+mode_preference <- read.csv(paste0(path_data,"2A - mode_preference.csv")) %>% 
+  select(-mode_decay) %>% 
+  mutate(
+    mode_decay = -log(.5)/mode_reasonable
+  )
+
+```
+
+Scoring West Oakland
+```{r}
+# baseline score for West Oakland
+complete_baseline <- data.frame(
+  amenity = amenity_preference$amenity %>% 
+    rep(amenity_preference$amenity_quantity)
+) %>%
+  left_join(
+    amenity_preference,
+    by = "amenity"
+  ) %>%
+  group_by(amenity) %>% 
+  mutate(
+    amenity_rank = row_number()-1
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    score = amenity_value * exp(-amenity_rank * amenity_decay) * .5
+  )
+
+sum(complete_baseline$score)
+  
+```
+
+```{r}
+complete_temp <- access_raw %>% 
+  left_join(
+    amenity_preference,
+    by = 'amenity'
+  ) %>% 
+  left_join(
+    mode_preference,
+    by = 'mode'
+  ) %>% 
+  group_by(id, mode, amenity) %>% 
+  arrange(time) %>% 
+  mutate(
+    amenity_rank = row_number()-1
+  ) %>% 
+  ungroup()
+
+# grabbing complete modes bc some NAs
+complete_modes <- complete_temp %>% 
+  mutate(
+    score = amenity_value * exp(-amenity_rank * amenity_decay) * exp(-time*mode_decay) * mode_value
+  ) %>% 
+  group_by(id, mode) %>%
+  arrange(desc(score)) %>%
+  filter(!duplicated(osm_id)) %>%
+  summarize(
+    score = sum(score, na.rm = T)/sum(complete_baseline$score)
+  )
+
+```
+
+```{r}
+complete_total <- complete_temp %>% 
+  mutate(
+    score = amenity_value * exp(-amenity_rank * amenity_decay) *mode_value * exp(-time*mode_decay)
+  ) %>% 
+  group_by(id) %>% 
+  arrange(desc(score)) %>% 
+  filter(!duplicated(osm_id)) %>% 
+  summarise(
+    score = sum(score, na.rm = T)/sum(complete_baseline$score)
+  ) %>% 
+  mutate(mode = "total")
+
+
+```
+
+```{r}
+complete <- rbind(
+  complete_modes,
+  complete_total
+)
+
+complete_map <- complete %>% 
+  pivot_wider(
+    names_from = "mode",
+    values_from = "score"
+  ) %>% 
+  cbind(WOak_blk %>% 
+          select(GEOID10)) %>% 
+  st_as_sf()
+
+mapview(complete_map, zcol = "walking")
+
+```
+
 
 
 
