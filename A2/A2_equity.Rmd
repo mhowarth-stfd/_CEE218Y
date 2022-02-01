@@ -550,7 +550,7 @@ WO_race_total <-
   mutate(walking_q = "Total")
 
 # making equity plot
-equity_walking_plot <- 
+equity_walking_plot_gg <- 
   equity_walking %>% 
   rbind(WO_race_total) %>% 
   ggplot() +
@@ -558,7 +558,8 @@ equity_walking_plot <-
     aes(
       x = walking_q %>% factor(levels = c(unique(equity_walking$walking_q),"Total")),
       y = estimated_pop,
-      fill = race %>% factor(levels = unique(equity_walking$race))
+      fill = race %>% factor(levels = unique(equity_walking$race)),
+      text =  estimated_pop/sum(estimated_pop)
     ),
     stat = "identity",
     position = "fill"
@@ -569,7 +570,7 @@ equity_walking_plot <-
     title = "West Oakland Walking Accessibility Equity Analysis",
     fill = "Race"
   ) +
-  coord_flip() +
+  #coord_flip() +
   theme(
     legend.position = "bottom",
     legend.direction = "vertical"
@@ -579,7 +580,9 @@ equity_walking_plot <-
     )
   )
 
-equity_walking_plot 
+equity_walking_plot <- ggplotly(equity_walking_plot_gg, tooltip = "y")
+
+equity_walking_plot
 
 
 ```
@@ -607,7 +610,7 @@ WO_race_total <-
   mutate(cycling_q = "Total")
 
 # making equity plot
-equity_cycling_plot <- 
+equity_cycling_plot_gg <- 
   equity_cycling %>% 
   rbind(WO_race_total) %>% 
   ggplot() +
@@ -626,7 +629,7 @@ equity_cycling_plot <-
     title = "West Oakland Cycling Accessibility Equity Analysis",
     fill = "Race"
   ) +
-  coord_flip() +
+  #coord_flip() +
   theme(
     legend.position = "bottom",
     legend.direction = "vertical"
@@ -635,6 +638,8 @@ equity_cycling_plot <-
     fill = guide_legend(
     )
   )
+
+equity_cycling_plot <- ggplotly(equity_cycling_plot_gg, tooltip = "y")
 
 equity_cycling_plot 
 
@@ -664,7 +669,7 @@ WO_race_total <-
   mutate(driving_q = "Total")
 
 # making equity plot
-equity_driving_plot <- 
+equity_driving_plot_gg <- 
   equity_driving %>% 
   rbind(WO_race_total) %>% 
   ggplot() +
@@ -683,7 +688,7 @@ equity_driving_plot <-
     title = "West Oakland Driving Accessibility Equity Analysis",
     fill = "Race"
   ) +
-  coord_flip() +
+  #coord_flip() +
   theme(
     legend.position = "bottom",
     legend.direction = "vertical"
@@ -692,6 +697,8 @@ equity_driving_plot <-
     fill = guide_legend(
     )
   )
+
+equity_driving_plot <- ggplotly(equity_driving_plot_gg, tooltip = "y")
 
 equity_driving_plot 
 
