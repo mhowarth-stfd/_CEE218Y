@@ -1,0 +1,1054 @@
+---
+title: "A2"
+author: "Merrick Howarth"
+date: "February 1, 2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = F, message = FALSE)
+```
+
+
+
+```{r libraries}
+library(tidyverse)
+library(sf)
+library(tigris)
+library(censusapi)
+library(mapview)
+library(leaflet)
+library(mapboxapi)
+library(plotly)
+library(knitr)
+# install.packages("tidytransit") ## be sure to install tidytransit if you want to run transit portions
+library(tidytransit)
+
+Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
+
+
+## adding 'path_item' for easy retrieval
+
+path_data <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/" 
+path_pois <- "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/" 
+
+#path_data <- "G:/My Drive/218Y/Assignments/2A/data/"
+#path_pois <- "G:/Shared drives/SFBI/Data Library/OSM/"
+
+
+
+```
+
+
+
+
+```{r start of POI maintenance}
+
+```
+
+
+```{r GD POIs, eval=FALSE}
+ pois <- st_read(paste0(path_pois,"gis_osm_pois_a_free_1.shp")) 
+```
+
+```{r pois filtering, eval=FALSE}
+# seleccting POIs of interest, could change by updating filter
+pois_filter <- pois %>%
+  rename(amenity = fclass) %>%
+  filter(amenity %in% c(
+    "community_centre",
+    "convenience",
+    "fast_food",
+    "supermarket",
+    "park",
+    "playground",
+    "kindergarten",
+    "school",
+    "library"
+  ))
+
+pois_filter_summary <- pois_filter %>%
+  st_drop_geometry() %>%
+  group_by(amenity) %>%
+  count() %>%
+  arrange(desc(n))
+
+pois_filter_summary
+
+mapview(pois_filter, zcol = "amenity")
+
+```
+
+```{r pull OSM POIs}
+# saveRDS(pois_filter, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/pois_filter.rds")
+pois_filter <- readRDS(paste0(path_data,"pois_filter.rds"))
+```
+
+
+
+
+```{r start of area of interest}
+
+```
+
+
+```{r place to blocks, eval=FALSE}
+
+
+alm_cbgs <- block_groups("CA","Alameda",2020)
+
+Oak_boundary <- places("CA",2020) %>% 
+  filter(NAME == "Oakland")
+
+saveRDS(Oak_boundary, paste0(path_data,"Oak_boundary.rds"))
+
+Oak_cbgs <- alm_cbgs %>% 
+  st_centroid() %>% 
+  .[Oak_boundary, ] %>% 
+  st_drop_geometry() %>% 
+  left_join(alm_cbgs %>% select(GEOID)) %>% 
+  st_as_sf()
+
+ mapview(Oak_cbgs)
+
+WOak_cbgs <- Oak_cbgs[c(87, 86, 88, 95, 159, 103, 102, 38, 41, 40, 39, 34, 169, 106, 105, 104, 101,
+                        288, 290, 289, 37, 36, 35),]   #pulled from map of block groups
+
+alm_blk <- blocks("CA","Alameda",2020)
+
+WOak_blk <- alm_blk %>% 
+  st_centroid() %>% 
+  .[WOak_cbgs, ] %>% 
+  st_drop_geometry() %>% 
+  left_join(alm_blk %>% select(GEOID20)) %>% 
+  st_as_sf()
+
+#saveRDS(WOak_blk, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WestOaklandBlocks.rds")
+```
+
+```{r pull blocks}
+#code runs off WOak_blk, but this could be populated with any other dataframe of blocks with GEOID20 and code should run
+WOak_blk <- readRDS(paste0(path_data,"WestOaklandBlocks.rds"))
+```
+
+
+```{r isochrones, eval=FALSE}
+isochrones <- c("walking","cycling","driving") %>%
+  map_dfr(function(x){
+    mb_isochrone(
+      WOak_blk,
+      profile = x,
+      time = c(5,10,15)
+    ) %>%
+      mutate(mode = x)
+})
+```
+
+```{r pull iso}
+#saveRDS(isochrones, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WOak_isochrones.rds")
+isochrones <- readRDS(paste0(path_data,"WOak_isochrones.rds"))
+```
+
+
+```{r nicer maps}
+# pois 
+
+Oak_boundary <- readRDS(paste0(path_data,"Oak_boundary.rds"))%>% 
+  st_transform(st_crs(pois_filter))
+
+`Filtered POIs`  <- pois_filter %>% 
+  st_centroid() %>% 
+  .[Oak_boundary,] %>% 
+  rename(Amenity = amenity) %>%
+  st_drop_geometry() %>% 
+  left_join(pois_filter %>% select(osm_id)) %>% 
+  st_as_sf()
+
+#picked mapview to get class coloring
+pois_map <- mapview(`Filtered POIs`, zcol="Amenity") 
+  #setView(lng=-122.28676, lat=37.814 zoom=13)
+
+# West Oakland block groups
+
+WOak_bck_map <- leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = WOak_blk,
+    fillColor = "blue",
+    fillOpacity = .5,
+    color = "black",
+    weight = .5
+  )
+
+# isochrones
+walk_iso_map <- leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = isochrones %>% filter(mode == "walking"),
+    label = ~mode, 
+    fillOpacity = .1,
+    weight = .1
+  )
+
+```
+
+
+
+```{r start of transit data}
+
+```
+
+
+```{r add transit to pois, eval=FALSE}
+# grabbing GTFS data
+gtfs <- read_gtfs(paste0(path_data,"gtfs.zip"))
+
+# only including walking for extent of this analysi
+isochrones_walking <- isochrones %>% 
+  filter(mode == "walking")
+
+
+
+# grabbing all the stops
+stops_all <- gtfs$stops %>% 
+  st_as_sf(coords = c("stop_lon", 
+                      "stop_lat"), crs = 4326)
+# visualize the stops
+mapview(stops_all)
+
+
+# spatially filter for all stops within walking isochrones
+stops_walk <- stops_all %>% 
+  .[isochrones_walking,] %>% 
+  select(c(stop_id, stop_name,geometry)) %>% 
+  mutate(mode = "walking") %>% 
+  st_as_sf()
+
+#saveRDS(stops_walk, paste0(path_data,"stops_walk.rds"))
+
+# visualize stops within walking and cycling distance
+mapview(stops_walk)
+
+
+# add stops to POIs
+stops_poi <- stops_walk %>%
+  transmute(osm_id = stop_id, code = NA, amenity = "transit_stop", name=stop_name, geometry=geometry)
+
+full_pois <- rbind(pois_filter,stops_poi)
+
+#saveRDS(full_pois, paste0(path_data,"full_pois.rds"))
+
+
+```
+
+```{r visualize stops}
+stops_walk <- readRDS(paste0(path_data,"stops_walk.rds"))
+
+stops_map <- leaflet() %>% 
+  addMapboxTiles(
+    style_id = "streets-v11",
+    username = "mapbox"
+  ) %>% 
+  addCircleMarkers(
+    data = stops_walk,
+    radius = 2.5,
+    opacity = 1,
+    fillOpacity = 1
+  )
+
+```
+
+```{r pull pois w/ transit}
+#saveRDS(full_pois, paste0(path_data,"full_pois.rds"))
+full_pois <- readRDS(paste0(path_data,"full_pois.rds"))
+```
+
+
+
+
+```{r start of scoring}
+
+```
+
+
+```{r access_raw, eval=FALSE}
+sf::sf_use_s2(FALSE)
+access_raw <- isochrones %>%
+  st_make_valid() %>%
+  st_join(full_pois) %>%
+  st_drop_geometry()
+
+access_raw <- access_raw %>%
+  filter(!is.na(osm_id)) %>%
+  
+  # removing all cycling and driving transit stops
+  filter(
+    ! ( (mode %in% c("cycling","driving")) & (amenity %in% c("transit_stop")) ) 
+         ) %>%
+  
+  #adding super market tag, if 1 is supermarket
+  mutate(
+    isSM_walk = case_when(
+      (mode %in% c("walking")) & (amenity %in% c("supermarket")) ~ 1,
+      TRUE ~ 0
+    ),
+    isSM_cycle = case_when(
+      (mode %in% c("cycling")) & (amenity %in% c("supermarket")) ~ 1,
+      TRUE ~ 0
+    ),
+    isSM_drive = case_when(
+      (mode %in% c("driving")) & (amenity %in% c("supermarket")) ~ 1,
+      TRUE ~ 0
+    )
+  )
+  
+
+# saveRDS(access_raw, paste0(path_data,"access_raw.rds"))
+```
+
+```{r pull access_raw}
+
+access_raw <- readRDS(paste0(path_data, "access_raw.rds"))
+
+```
+
+
+```{r load subjectivity data}
+#loading amenity pref. data from CSV file
+amenity_preference <- read.csv(paste0(path_data,"2A - amenity_preference.csv")) %>% 
+  select(-amenity_decay) %>% 
+  mutate(
+    amenity_decay = -log(.5)/amenity_quantity
+  )
+
+amenity_preference_table <- kable(amenity_preference)
+
+# loading mode pref from CSV file
+mode_preference <- read.csv(paste0(path_data,"2A - mode_preference.csv")) %>% 
+  select(-mode_decay) %>% 
+  mutate(
+    mode_decay = -log(.5)/mode_reasonable
+  )
+
+mode_preference_table <- kable(mode_preference)
+
+```
+
+
+```{r baseline score}
+# baseline score for West Oakland
+complete_baseline <- data.frame(
+  amenity = amenity_preference$amenity %>% 
+    rep(amenity_preference$amenity_quantity)
+) %>%
+  left_join(
+    amenity_preference,
+    by = "amenity"
+  ) %>%
+  group_by(amenity) %>% 
+  mutate(
+    amenity_rank = row_number()-1
+  ) %>% 
+  ungroup() %>% 
+  mutate(
+    score = amenity_value * exp(-amenity_rank * amenity_decay) * .5
+  )
+
+baseline <- sum(complete_baseline$score)
+  
+```
+
+
+```{r scoring inital, eval=FALSE}
+# Creatign access scores
+complete_temp <- access_raw %>% 
+  left_join(
+    amenity_preference,
+    by = 'amenity'
+  ) %>% 
+  left_join(
+    mode_preference,
+    by = 'mode'
+  ) %>%
+  group_by(id, mode, amenity) %>% 
+  arrange(time) %>% 
+  mutate(
+    amenity_rank = row_number()-1
+  ) %>% 
+  ungroup()
+# move crit amenity tag to end for legibility
+complete_temp <- complete_temp[, c(1,2,3,4,5,6,7,11,12,13,14,15,16,17,8,9,10)]
+
+saveRDS(complete_temp, paste0(path_data,"complete_temp.rds"))
+
+```
+
+
+```{r scoring}
+complete_temp<- readRDS(paste0(path_data,"complete_temp.rds"))
+
+# grabbing complete modes bc some NAs
+complete_modes_ungrouped <- complete_temp %>% 
+  mutate(
+    score = amenity_value * exp(-amenity_rank * amenity_decay) * exp(-time*mode_decay) * mode_value
+  ) 
+
+# adding crit amenity flag, if != 0 then there is an accessible supermarket
+crit_amenity <- complete_modes_ungrouped %>%
+  group_by(id) %>%
+  summarize(
+    SM_walk = sum(isSM_walk, na.rm = T),
+    SM_cycle = sum(isSM_cycle, na.rm = T),
+    SM_drive = sum(isSM_drive, na.rm = T)
+  )
+  
+
+# summing scores for each mode
+complete_modes <- complete_modes_ungrouped %>%
+  group_by(id, mode) %>%
+  arrange(desc(score)) %>%
+  filter(!duplicated(osm_id)) %>%
+  summarize(
+    score = sum(score, na.rm = T)/sum(complete_baseline$score)
+  )
+
+```
+
+
+```{r total scoring}
+
+# suming mode score for total score 
+complete_total <- complete_temp %>% 
+  mutate(
+    score = amenity_value * exp(-amenity_rank * amenity_decay) *mode_value * exp(-time*mode_decay)
+  ) %>% 
+  group_by(id) %>% 
+  arrange(desc(score)) %>% 
+  filter(!duplicated(osm_id)) %>% 
+  summarise(
+    score = sum(score, na.rm = T)/sum(complete_baseline$score)
+  ) %>% 
+  mutate(mode = "total")
+
+
+```
+
+
+```{r score legibility and crit amenity}
+complete <- rbind(
+  complete_modes,
+  complete_total
+) 
+
+# created formatted score for hover tool with super market flag (if there is a super market there is a star)
+complete_format <- complete %>% 
+  pivot_wider(
+    names_from = "mode",
+    values_from = "score"
+  ) %>%
+  cbind(select(crit_amenity, !id)) %>%
+  mutate(
+    Walking_Score = case_when(
+      SM_walk > 0 ~ paste0(round(walking,2),"*"),
+      SM_walk == 0 ~ as.character(round(walking,2))
+    ),
+    Cycling_Score = case_when(
+      SM_cycle > 0 ~ paste0(round(cycling,2),"*"),
+      SM_cycle == 0 ~ as.character(round(cycling,2))
+    ),
+    Driving_Score = case_when(
+      SM_drive > 0 ~ paste0(round(driving,2),"*"),
+      SM_drive == 0 ~ as.character(round(driving,2))
+    ),
+    Total_Score = case_when(
+      SM_drive > 0 ~ paste0(round(driving,2),"*"), # only need to check drive b/c largest area
+      SM_drive == 0 ~ as.character(round(driving,2))
+    )
+  ) 
+complete_format <- as.data.frame(complete_format)
+
+# count of blocks without critical amenities
+nocrit_amanity_count_walk <- c( dim(filter(complete_format, SM_walk == 0))[1],
+                                dim(complete_format)[1])
+nocrit_amanity_count_cycle <- c( dim(filter(complete_format, SM_cycle == 0))[1],
+                                dim(complete_format)[1])
+nocrit_amanity_count_drive <- c( dim(filter(complete_format, SM_drive == 0))[1],
+                                dim(complete_format)[1])
+
+complete_map <- complete %>% 
+  pivot_wider(
+    names_from = "mode",
+    values_from = "score"
+  ) %>%
+  cbind(
+    complete_format %>% select(Walking_Score, Cycling_Score, Driving_Score, Total_Score)
+  ) %>% 
+  cbind(WOak_blk %>% 
+          select(GEOID20)) %>% 
+  st_as_sf()
+
+#mapview(complete_map, zcol = "walking")
+
+```
+
+
+```{r visualizing complete map total}
+score_pal <- colorNumeric(
+  palette = "viridis",
+  domain = complete_map$total
+)
+
+total_score_map <- leaflet() %>% 
+  addMapboxTiles(
+    style_id = "streets-v11",
+    username = "mapbox"
+  ) %>% 
+  addPolygons(
+    data = complete_map,
+    label = ~Total_Score,
+    fillColor = ~score_pal(total),
+    fillOpacity = .75,
+    color = "black",
+    weight = .5
+  ) %>% 
+  addLegend("bottomright",
+    pal = score_pal,
+    values = complete_map$total,
+    title = "Total Accessibility Score"
+  )
+
+```
+
+
+```{r visualizing complete map}
+
+#palets for different scores
+score_pal_walking <- colorNumeric(
+  palette = "viridis",
+  domain = complete_map$walking
+)
+score_pal_cycling <- colorNumeric(
+  palette = "viridis",
+  domain = complete_map$cycling
+)
+score_pal_driving <- colorNumeric(
+  palette = "viridis",
+  domain = complete_map$driving
+)
+
+# map withtogglable scores
+mode_score_map <- leaflet() %>% 
+  addMapboxTiles(
+    style_id = "streets-v11",
+    username = "mapbox"
+  ) %>% 
+  addPolygons(
+    data = complete_map,
+    label = ~Walking_Score,
+    fillColor = ~score_pal_walking(walking),
+    fillOpacity = .75,
+    color = "black",
+    weight = .5,
+    group = "Walking Score"
+  ) %>%  
+  addPolygons(
+    data = complete_map,
+    label = ~Cycling_Score,
+    fillColor = ~score_pal_cycling(cycling),
+    fillOpacity = .75,
+    color = "black",
+    weight = .5,
+    group = "Cycling Score"
+  ) %>%  
+  addPolygons(
+    data = complete_map,
+    label = ~Driving_Score,
+    fillColor = ~score_pal_driving(driving),
+    fillOpacity = .75,
+    color = "black",
+    weight = .5,
+    group = "Driving Score"
+  ) %>% 
+  
+    addLayersControl(position = "topleft",
+    baseGroups = c("Walking Score", "Cycling Score", "Driving Score"),
+    options = layersControlOptions(collapsed = FALSE)
+  )%>%
+  
+  addLegend("bottomright",
+    pal = score_pal_walking,
+    values = complete_map$walking,
+    title = "Walking Score"
+  ) %>%
+  addLegend("bottomright",
+    pal = score_pal_cycling,
+    values = complete_map$cycling,
+    title = "Cycling Score"
+  ) %>%
+  addLegend("bottomleft",
+    pal = score_pal_driving,
+    values = complete_map$driving,
+    title = "Driving Score"
+  )
+
+```
+
+
+
+
+```{r start of equity analysis}
+
+```
+
+
+```{r score quartile}
+
+walking_quartile <- quantile(complete_map$walking)
+cycling_quartile <- quantile(complete_map$cycling)
+driving_quartile <- quantile(complete_map$driving)
+total_quartile <- quantile(complete_map$total)
+
+
+complete_quart <-
+  complete_map %>%
+  
+  st_drop_geometry()%>%
+  
+  mutate(
+    walking_q = case_when(
+      walking <= walking_quartile[2] ~ "1 - Worst",
+      walking <= walking_quartile[3] ~ "2",
+      walking <= walking_quartile[4] ~ "3",
+      walking <= walking_quartile[5] ~ "4 - Best"
+    ),
+    cycling_q = case_when(
+      cycling <= cycling_quartile[2] ~ "1 - Worst",
+      cycling <= cycling_quartile[3] ~ "2",
+      cycling <= cycling_quartile[4] ~ "3",
+      cycling <= cycling_quartile[5] ~ "4 - Best"
+    ),
+    driving_q = case_when(
+      driving <= driving_quartile[2] ~ "1 - Worst",
+      driving <= driving_quartile[3] ~ "2",
+      driving <= driving_quartile[4] ~ "3",
+      driving <= driving_quartile[5] ~ "4 - Best"
+    ),
+    total_q = case_when(
+      total <= total_quartile[2] ~ "1 - Worst",
+      total <= total_quartile[3] ~ "2",
+      total <= total_quartile[4] ~ "3",
+      total <= total_quartile[5] ~ "4 - Best"
+    )
+  ) %>%
+  
+  select(ends_with("_q"),GEOID20)
+    
+  
+  
+
+```
+
+
+```{r census data, eval=FALSE}
+# getting associated census variables data
+dec_vars_2020 <-
+  listCensusMetadata(
+    name = "2020/dec/pl",
+    type = "variables"
+  )
+
+#saveRDS(dec_vars_2020, paste0(path_data,"dec_vars_2020.rds"))
+dec_vars_2020 <- readRDS(paste0(path_data, "dec_vars_2020.rds"))
+
+
+# pulling decenial data for race of alameda county blocks and cleaning
+alm_pop_race_2020 <-
+  getCensus(
+    name = "dec/pl", vintage = 2020, region = "block:*", 
+    regionin = "state:06+county:001", vars = "group(P1)") %>% 
+  
+  mutate(
+    block = paste0(state,county,tract,block)) %>% 
+  
+  select(
+    !c(GEO_ID,state,county,tract,NAME) & !ends_with(c("NA"))) %>% 
+  
+  pivot_longer(
+    ends_with("N"), names_to = "name", values_to = "estimate") %>%
+  
+  left_join(
+    dec_vars_2020 %>% 
+      select(name, label)) %>% 
+  
+  select(-name) %>% 
+  
+  separate(
+    label, into = c(NA,NA,"category1","category2"), sep = "!!") %>% 
+  
+  mutate(
+    race = case_when(
+      category1 == "Population of two or more races:" & is.na(category2) ~ "Two or more races",
+      category1 == "Population of two or more races:" ~ "",
+      !is.na(category2) ~ category2,
+      TRUE ~ ""
+    ))%>% 
+  
+  filter(race != "") %>% 
+  
+  select(GEOID20 = block, race, pop20 = estimate) 
+
+
+
+```
+
+
+```{r census data pull}
+dec_vars_2020 <- readRDS(paste0(path_data, "dec_vars_2020.rds"))
+
+
+#saveRDS(alm_pop_race_2020, paste0(path_data,"alm_pop_race_2020.rds"))
+alm_pop_race_2020 <- readRDS(paste0(path_data, "alm_pop_race_2020.rds"))
+
+
+almCounty_race_total <-
+  alm_pop_race_2020 %>% 
+  group_by(race) %>% 
+  summarize(estimated_pop = sum(pop20)) %>%
+  mutate(
+    prop = estimated_pop / sum(estimated_pop)
+    )
+
+```
+
+
+```{r total equity plot}
+# combining scores with race data for blocks
+equity_total <- alm_pop_race_2020 %>%
+  
+  left_join(complete_quart %>% select(GEOID20, total_q), by = "GEOID20") %>%
+    
+  filter(!is.na(total_q)) %>%
+  
+  group_by(race, total_q) %>%
+  summarise(
+    estimated_pop = sum(pop20)
+  )
+  
+
+# re-adding values for population distribution for comparison
+WO_race_total <-
+  equity_total %>% 
+  group_by(race) %>% 
+  summarize(estimated_pop = sum(estimated_pop)) %>% 
+  mutate(total_q = "Total")
+
+# making equity plot
+equity_total_plot_gg <- 
+  equity_total %>% 
+  rbind(WO_race_total) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = total_q %>% factor(levels = c(unique(equity_total$total_q),"Total")),
+      y = estimated_pop,
+      fill = race %>% factor(levels = unique(equity_total$race)),
+      text =  estimated_pop/sum(estimated_pop)
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Quartile of Total Score",
+    y = "Proportion of Population ",
+    title = "West Oakland Total Accessibility Equity Analysis",
+    fill = "Race"
+  ) +
+  #coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )  +
+  guides(
+    fill = guide_legend(
+    )
+  )
+
+equity_total_plot <- ggplotly(equity_total_plot_gg, tooltip = "y")
+
+
+
+
+```
+
+
+```{r walking equity plot}
+# combining scores with race data for blocks
+equity_walking <- alm_pop_race_2020 %>%
+  
+  left_join(complete_quart %>% select(GEOID20, walking_q), by = "GEOID20") %>%
+    
+  filter(!is.na(walking_q)) %>%
+  
+  group_by(race, walking_q) %>%
+  summarise(
+    estimated_pop = sum(pop20)
+  )
+  
+
+# re-adding values for population distribution for comparison
+WO_race_total <-
+  equity_walking %>% 
+  group_by(race) %>% 
+  summarize(estimated_pop = sum(estimated_pop)) %>% 
+  mutate(walking_q = "Total")
+
+# making equity plot
+equity_walking_plot_gg <- 
+  equity_walking %>% 
+  rbind(WO_race_total) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = walking_q %>% factor(levels = c(unique(equity_walking$walking_q),"Total")),
+      y = estimated_pop,
+      fill = race %>% factor(levels = unique(equity_walking$race)),
+      text =  estimated_pop/sum(estimated_pop)
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Quartile of Walking Score",
+    y = "Proportion of Population ",
+    title = "West Oakland Walking Accessibility Equity Analysis",
+    fill = "Race"
+  ) +
+  #coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )  +
+  guides(
+    fill = guide_legend(
+    )
+  )
+
+equity_walking_plot <- ggplotly(equity_walking_plot_gg, tooltip = "y")
+
+
+
+
+```
+
+
+```{r cycling equity plot}
+
+# combining scores with race data for blocks
+equity_cycling <- alm_pop_race_2020 %>%
+  
+  left_join(complete_quart %>% select(GEOID20, cycling_q), by = "GEOID20") %>%
+    
+  filter(!is.na(cycling_q)) %>%
+  
+  group_by(race, cycling_q) %>%
+  summarise(
+    estimated_pop = sum(pop20)
+  )
+  
+# re-adding values for population distribution for comparison
+WO_race_total <-
+  equity_cycling %>% 
+  group_by(race) %>% 
+  summarize(estimated_pop = sum(estimated_pop)) %>% 
+  mutate(cycling_q = "Total")
+
+# making equity plot
+equity_cycling_plot_gg <- 
+  equity_cycling %>% 
+  rbind(WO_race_total) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = cycling_q %>% factor(levels = c(unique(equity_cycling$cycling_q),"Total")),
+      y = estimated_pop,
+      fill = race %>% factor(levels = unique(equity_cycling$race))
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Quartile of Cycling Score",
+    y = "Proportion of Population ",
+    title = "West Oakland Cycling Accessibility Equity Analysis",
+    fill = "Race"
+  ) +
+  #coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )  +
+  guides(
+    fill = guide_legend(
+    )
+  )
+
+equity_cycling_plot <- ggplotly(equity_cycling_plot_gg, tooltip = "y")
+
+ 
+
+
+```
+
+
+```{r driving equity plot}
+
+# combining scores with race data for blocks
+equity_driving <- alm_pop_race_2020 %>%
+  
+  left_join(complete_quart %>% select(GEOID20, driving_q), by = "GEOID20") %>%
+    
+  filter(!is.na(driving_q)) %>%
+  
+  group_by(race, driving_q) %>%
+  summarise(
+    estimated_pop = sum(pop20)
+  )
+  
+# re-adding values for population distribution for comparison
+WO_race_total <-
+  equity_driving %>% 
+  group_by(race) %>% 
+  summarize(estimated_pop = sum(estimated_pop)) %>% 
+  mutate(driving_q = "Total")
+
+# making equity plot
+equity_driving_plot_gg <- 
+  equity_driving %>% 
+  rbind(WO_race_total) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = driving_q %>% factor(levels = c(unique(equity_driving$driving_q),"Total")),
+      y = estimated_pop,
+      fill = race %>% factor(levels = unique(equity_driving$race))
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Quartile of Driving Score",
+    y = "Proportion of Population ",
+    title = "West Oakland Driving Accessibility Equity Analysis",
+    fill = "Race"
+  ) +
+  #coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  )  +
+  guides(
+    fill = guide_legend(
+    )
+  )
+
+equity_driving_plot <- ggplotly(equity_driving_plot_gg, tooltip = "y")
+
+ 
+
+
+```
+
+## Complete Communities: An Access and Equity Analysis
+
+### Introduction
+In developing a complete community score, I was prompted to think of a major urban problem I know to be plaguing my home city of Chicago: food deserts. In the area, it has been a long-standing issues bearing especially hard impacts on minority communities and has even been equated to food redlining by local academics. It is a largely systematic fault which has been shown to have serious negative impacts on the communities it affects. A lack of access to healthy food like fruits and vegetables often leads to higher rates of chronic illnesses like hypertension which untimely then lead to shorter lifespans. The problem has only grown worse throughout the pandemic as many families’ resources become scarcer. 
+
+### Complete Community Guidlines
+Bearing this in mind, we worked to create a complete community score which covered essentials for disadvantaged communities, with a special interest in food. The amenities captured in our score include:
+
+* Community resources
+  + Community Centers
+  + Parks
+  + Libraries
+* Family Support 
+  + Kindergartens
+  + Schools
+  + Playgrounds
+* Transportation Needs
+	+ Transit Stops
+* Food
+	+ Supermarkets / Green Grocers (considered a critical amenity)
+	+ Convenience Stores
+	+ Fast Food (considered a negative amenity)
+
+It should be noted that with our particular interest in food, supermarkets are considered a critical amenity since it offers fruits and vegetables, and fast food is considered a negative amenity since it encourages unhealthy eating habits. This lens does not fully capture the impact of income on accessibility as supermarkets may be too expensive and fast food may be the only affordable food option at times, but this aspect is beyond the scope of this analysis. Our amenities can be seen in the plots below, only amenities in Oakland are shown in the map, but amenities in all of the greater bay area were considered in scoring.
+
+```{r}
+pois_map 
+
+stops_map
+
+```
+
+
+Finally, we selected our area of interest as the neighborhood of West Oakland was selected as our area of interest as it is a minority community, having a 33.6% Black or African American population compared to Alameda county’s 9.8% Black or African American population. We chose to do our analysis on a block scale to allow for more accurate scoring, as isochrone centroids are closer to where people would actually live.
+
+```{r}
+WOak_bck_map
+```
+
+### Accesiblity Scores
+
+We subjectively assigned scores, which can be seen bellow, to favor walking (since it is a more universally accessible mode) and emphasize healthy food. 
+
+```{r}
+amenity_preference_table 
+mode_preference_table 
+```
+
+
+These ratings were then used to score each block based on what amenities were accessible in 5, 10, and 15 minute isochrones for walking, cycling, and driving. Then the blocks were given a score normalized by a baseline community, which was 7.95 when considering all modes of transit. Maps demonstrating total score and separate mode scores can be seen below. When hovering over maps, the presence of an accessible critical amenity is indicated by an asterisk following the score.
+
+
+```{r}
+total_score_map
+mode_score_map
+```
+
+
+The maps above brought some key thoughts to mind. At first glance, the total score of every block is above 1 indicating that all communities are roughly complete. On further investigation of the mode specific scored map though, the vast majority of blocks do not have walking access to a supermarket. In fact, only 108 of the 534 blocks evaluated have walking access to a grocery store. This presents something of a flaw in only looking at overall scores as access to other amenities like parks can create an artificial sense of a complete community, though mode analysis begin to break it down. Walking scores are the onle scores which significantly drop below 1. This is especially notable as walking is most universally accessible mode of transit and thus I feel is the most important. Other issues with block geographies also become apparent when considering the driving score map, as there is really only one block not meeting community expectations which does not appear to be heavily inhabited. It is also really interesting just seeing the general heat map effect of the different scores and checking which amenities may have caused it. 
+
+
+### Equity Analysis
+
+Once scores were identified an equity analysis based on racial data from the 2020 decennial census was conducted on the area, the results of which can be seen in the plots below. It should be noted, the total column indicates total population proportions.
+
+```{r}
+equity_total_plot
+equity_walking_plot
+equity_cycling_plot
+equity_driving_plot
+```
+
+When considering the above plots, I am a bit surprised to see the minimal variability with population scores only swinging about 5% at most from the total population. It is interesting that Black and African American populations are most commonly in highest rates in the middle quartiles. This prompts me to wonder about potential impacts from cultural neighborhoods. Additionally, I think it is interesting in considering the driving score analysis plot that it is quite equitable. I would imagine this is because the considered neighborhood lies in the center of a number of highways and as such with a 15-minute driving allotment, most blocks are largely comparable. Lastly, these analyses leave me wanting for a comparison with the larger Oakland area since this is such a focused case of a highly minority population. In a larger analysis it would be interesting to see if this majority Black and African American population may actually be concentrated in a single quartile.
+
+If I were to further refine this analysis, I would be interested in repeating the procedure for block groups in order to analyze income. Beyond potential racial impacts, food deserts bear a huge impact on low-income communities. While simply adding accessibility to grocers helps to meet food desert needs, they are not always accessible to low-income families. Identifying both food deserts and their overlap with low-income communities presents the opportunity to identify potential locations for more intensive intervention like implementing community gardens to provide affordable and healthy food to families that need it. 
+
+Note: Code was completed in coordination with Awoe Mauna-Woanya
+
+
+
+
+
+
+
+
+
+
+
+
+
+
