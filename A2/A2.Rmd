@@ -31,8 +31,12 @@ Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
 # mac path to A2 data: /Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/ "file"
 
 ## adding 'path_item' for easy retrieval
-path_data <-  "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/" #"G:/My Drive/218Y/Assignments/2A/data/"
-path_pois <- "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/" #"G:/Shared drives/SFBI/Data Library/OSM/"
+
+# path_data <-  "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/" 
+# path_pois <- "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/" 
+
+path_data <- "G:/My Drive/218Y/Assignments/2A/data/"
+path_pois <- "G:/Shared drives/SFBI/Data Library/OSM/"
 
 
 
@@ -140,6 +144,40 @@ mapview(isochrones %>% filter(mode == "walking"))
 mapview(pois_filter, zcol = "amenity")
 ```
 
+```{r nicer maps}
+# pois 
+leaflet() %>% 
+addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+addPolygons(
+  data = pois_filter,
+  label = ~amenity
+)
+
+# West Oakland block groups
+
+leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = WOak_blk,
+    fillColor = "blue",
+    fillOpacity = .5,
+    color = "black",
+    weight = .5
+  )
+
+# isochrones
+leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = isochrones %>% filter(mode == "walking"),
+    label = ~mode, 
+    fillOpacity = .1,
+    weight = .1
+  )
+
+```
+
+
 ### transit data
 
 ```{r add transit to pois, eval=FALSE}
@@ -168,15 +206,10 @@ stops_walk <- stops_all %>%
   mutate(mode = "walking") %>% 
   st_as_sf()
 
-## stops within cycling isochrones if we wanted to include
-# stops_cycle <- stops_all %>% 
-#   .[isochrones_cycling,]
-
 # visualize stops within walking and cycling distance
 mapview(stops_walk)
 mapview(stops_cycle)
 
-stops_walk <- saveRDS(stops_walk, paste0(path_data,"stops_walk.rds")) # having trouble saving this
 
 ## attempt to add stops to POI
 
@@ -188,24 +221,21 @@ full_pois <- rbind(pois_filter,stops_poi)
 saveRDS(full_pois, paste0(path_data,"full_pois.rds"))
 full_pois <- readRDS(paste0(path_data,"full_pois.rds"))
 
-## don't need the section below; starts to get at including transit rides for our isochrones
+```
 
-# isochrones_firstmile <- isochrones_walking %>% 
-#   st_make_valid() %>% 
-#   st_join(stops_walk) %>% 
-#   st_drop_geometry() %>% 
-#   group_by(stop_id) %>% 
-#   arrange(time) %>% 
-#   filter(!duplicated(stop_id)) %>% 
-#   select(
-#     firstmile_time = time,
-#     id,
-#     from_stop_id = stop_id
-#   )
+```{r visualize stops}
 
-
+leaflet() %>% 
+  addMapboxTiles(
+    style_id = "streets-v11",
+    username = "mapbox"
+  ) %>% 
+  addPolygons(
+    data = stops_walk
+  )
 
 ```
+
 
 ```{r pull pois w/ transit}
 #saveRDS(full_pois, paste0(path_data,"full_pois.rds"))
@@ -246,7 +276,7 @@ access_raw <- access_raw %>%
   
 
 
-saveRDS(access_raw, paste0(path_data,"access_raw.rds"))
+# saveRDS(access_raw, paste0(path_data,"access_raw.rds"))
 ```
 
 
@@ -404,6 +434,34 @@ complete_map <- complete %>%
 mapview(complete_map, zcol = "walking")
 
 ```
+
+```{r visualizing complete map}
+score_pal <- colorNumeric(
+  palette = "viridis",
+  domain = complete_map$total
+)
+
+leaflet() %>% 
+  addMapboxTiles(
+    style_id = "streets-v11",
+    username = "mapbox"
+  ) %>% 
+  addPolygons(
+    data = complete_map,
+    label = ~round(total,2),
+    fillColor = ~score_pal(total),
+    fillOpacity = .75,
+    color = "black",
+    weight = .5
+  ) %>% 
+  addLegend("bottomright",
+    pal = score_pal,
+    values = complete_map$total,
+    title = "Total Accessibility Score"
+  )
+
+```
+
 
 
 
