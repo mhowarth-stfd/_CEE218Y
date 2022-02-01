@@ -39,37 +39,37 @@ path_pois <- "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/OSM/" #"G:/Sh
 ```
 
 ## POI Maintenance
-```{r GD POIs}
-# pois <- st_read(paste0(path_pois,"gis_osm_pois_a_free_1.shp")) 
+```{r GD POIs, eval=FALSE}
+ pois <- st_read(paste0(path_pois,"gis_osm_pois_a_free_1.shp")) 
 ```
 
-```{r}
-# pois_filter <- pois %>%
-#   rename(amenity = fclass) %>%
-#   filter(amenity %in% c(
-#     "community_centre",
-#     "convenience",
-#     "fast_food",
-#     "supermarket",
-#     "park",
-#     # "green grocer", was not captured in poi data for bay area
-#     "playground",
-#     "kindergarten",
-#     "school",
-#     "library"#,
-#     #"tram_stop", was not captured in poi data for bay area
-#     #"bus_stop" was not captured in poi data for bay area
-#   ))
-# 
-# pois_filter_summary <- pois_filter %>%
-#   st_drop_geometry() %>%
-#   group_by(amenity) %>%
-#   count() %>%
-#   arrange(desc(n))
-# 
-# pois_filter_summary
-# 
-# mapview(pois_filter, zcol = "amenity")
+```{r pois filtering, eval=FALSE}
+pois_filter <- pois %>%
+  rename(amenity = fclass) %>%
+  filter(amenity %in% c(
+    "community_centre",
+    "convenience",
+    "fast_food",
+    "supermarket",
+    "park",
+    "green grocer", #was not captured in poi data for bay area
+    "playground",
+    "kindergarten",
+    "school",
+    "library"#,
+    #"tram_stop", was not captured in poi data for bay area
+    #"bus_stop" was not captured in poi data for bay area
+  ))
+
+pois_filter_summary <- pois_filter %>%
+  st_drop_geometry() %>%
+  group_by(amenity) %>%
+  count() %>%
+  arrange(desc(n))
+
+pois_filter_summary
+
+mapview(pois_filter, zcol = "amenity")
 
 ```
 
@@ -80,56 +80,56 @@ pois_filter <- readRDS(paste0(path_data,"pois_filter.rds"))
 
 
 ## Area of Interest - 
-```{r place to blocks}
+```{r place to blocks, eval=FALSE}
+alm_cbgs <- block_groups("CA","Alameda",2020)
 
-# alm_cbgs <- block_groups("CA","Alameda")
-# 
-# Oak_boundary <- places("CA") %>% 
-#   filter(NAME == "Oakland")
-# 
-# Oak_cbgs <- alm_cbgs %>% 
-#   st_centroid() %>% 
-#   .[Oak_boundary, ] %>% 
-#   st_drop_geometry() %>% 
-#   left_join(alm_cbgs %>% select(GEOID)) %>% 
-#   st_as_sf()
-# 
-# #mapview(Oak_cbgs)
-# 
-# WOak_cbgs <- Oak_cbgs[c(87, 86, 88, 95, 159, 103, 102, 38, 41, 40, 39, 34, 169, 106, 105, 104, 101, 288, 290, 289, 37, 36, 35),] # pulled from map of block groups
-# 
-# alm_blk <- blocks("CA","Alameda")
-# 
-# WOak_blk <- alm_blk %>% 
-#   st_centroid() %>% 
-#   .[WOak_cbgs, ] %>% 
-#   st_drop_geometry() %>% 
-#   left_join(alm_blk %>% select(GEOID10)) %>% 
-#   st_as_sf()
-# 
-# mapview(WOak_blk)
-# 
-# saveRDS(WOak_blk, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WestOaklandBlocks.rds")
+Oak_boundary <- places("CA",2020) %>% 
+  filter(NAME == "Oakland")
 
+Oak_cbgs <- alm_cbgs %>% 
+  st_centroid() %>% 
+  .[Oak_boundary, ] %>% 
+  st_drop_geometry() %>% 
+  left_join(alm_cbgs %>% select(GEOID)) %>% 
+  st_as_sf()
+
+ mapview(Oak_cbgs)
+
+WOak_cbgs <- Oak_cbgs[c(87, 86, 88, 95, 159, 103, 102, 38, 41, 40, 39, 34, 169, 106, 105, 104, 101,
+                        288, 290, 289, 37, 36, 35),]   #pulled from map of block groups
+
+alm_blk <- blocks("CA","Alameda",2020)
+
+WOak_blk <- alm_blk %>% 
+  st_centroid() %>% 
+  .[WOak_cbgs, ] %>% 
+  st_drop_geometry() %>% 
+  left_join(alm_blk %>% select(GEOID20)) %>% 
+  st_as_sf()
+
+#saveRDS(WOak_blk, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WestOaklandBlocks.rds")
+```
+
+
+```{r pull blocks}
 WOak_blk <- readRDS(paste0(path_data,"WestOaklandBlocks.rds"))
-
 ```
 
 
-```{r}
-# isochrones <- c("walking","cycling","driving") %>%
-#   map_dfr(function(x){
-#     mb_isochrone(
-#       WOak_blk,
-#       profile = x,
-#       time = c(5,10,15)
-#     ) %>%
-#       mutate(mode = x)
-# })
+```{r isochrones, eval=FALSE}
+isochrones <- c("walking","cycling","driving") %>%
+  map_dfr(function(x){
+    mb_isochrone(
+      WOak_blk,
+      profile = x,
+      time = c(5,10,15)
+    ) %>%
+      mutate(mode = x)
+})
 ```
 
-```{r}
-# saveRDS(isochrones, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WOak_isochrones.rds")
+```{r pull iso}
+#saveRDS(isochrones, "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/2A/data/WOak_isochrones.rds")
 isochrones <- readRDS(paste0(path_data,"WOak_isochrones.rds"))
 ```
 
@@ -140,11 +140,9 @@ mapview(isochrones %>% filter(mode == "walking"))
 mapview(pois_filter, zcol = "amenity")
 ```
 
-
-
 ### transit data
 
-```{r}
+```{r add transit to pois, eval=FALSE}
 # grabbing GTFS data; can't find the zip file to line so I just downloaded the file and added it to our Gdrive data
 gtfs <- read_gtfs(paste0(path_data,"gtfs.zip"))
 
@@ -178,7 +176,6 @@ stops_walk <- stops_all %>%
 mapview(stops_walk)
 mapview(stops_cycle)
 
-# Looking back, when you save something you shouldn't include a var name, that may be the issue
 stops_walk <- saveRDS(stops_walk, paste0(path_data,"stops_walk.rds")) # having trouble saving this
 
 ## attempt to add stops to POI
@@ -188,7 +185,7 @@ stops_poi <- stops_walk %>%
 
 full_pois <- rbind(pois_filter,stops_poi)
 
-#saveRDS(full_pois, paste0(path_data,"full_pois.rds"))
+saveRDS(full_pois, paste0(path_data,"full_pois.rds"))
 full_pois <- readRDS(paste0(path_data,"full_pois.rds"))
 
 ## don't need the section below; starts to get at including transit rides for our isochrones
@@ -210,9 +207,13 @@ full_pois <- readRDS(paste0(path_data,"full_pois.rds"))
 
 ```
 
+```{r pull pois w/ transit}
+#saveRDS(full_pois, paste0(path_data,"full_pois.rds"))
+full_pois <- readRDS(paste0(path_data,"full_pois.rds"))
+```
 
-```{r}
 
+```{r access_raw, eval=FALSE}
 sf::sf_use_s2(FALSE)
 access_raw <- isochrones %>%
   st_make_valid() %>%
@@ -245,7 +246,11 @@ access_raw <- access_raw %>%
   
 
 
-#saveRDS(access_raw, paste0(path_data,"access_raw.rds"))
+saveRDS(access_raw, paste0(path_data,"access_raw.rds"))
+```
+
+
+```{r pull access_raw}
 
 access_raw <- readRDS(paste0(path_data, "access_raw.rds"))
 
@@ -393,7 +398,7 @@ complete_map <- complete %>%
     values_from = "score"
   ) %>% 
   cbind(WOak_blk %>% 
-          select(GEOID10)) %>% 
+          select(GEOID20)) %>% 
   st_as_sf()
 
 mapview(complete_map, zcol = "walking")
@@ -402,8 +407,87 @@ mapview(complete_map, zcol = "walking")
 
 
 
+## Equity analysis
+
+```{r score quartile}
+
+walk_quartile <- quantile(complete_map$walking)
+cycle_quartile <- quantile(complete_map$cycling)
+driving_quartile <- quantile(complete_map$driving)
 
 
+```
+
+
+
+
+```{r census data, eval=FALSE}
+# getting associated census variables data
+dec_vars_2020 <-
+  listCensusMetadata(
+    name = "2020/dec/pl",
+    type = "variables"
+  )
+
+#saveRDS(dec_vars_2020, paste0(path_data,"dec_vars_2020.rds"))
+dec_vars_2020 <- readRDS(paste0(path_data, "dec_vars_2020.rds"))
+
+
+alm_pop_race_2020 <-
+  getCensus(
+    name = "dec/pl", vintage = 2020, region = "block:*", 
+    regionin = "state:06+county:001", vars = "group(P1)") %>% 
+  
+  mutate(
+    block = paste0(state,county,tract,block)) %>% 
+  
+  select(
+    !c(GEO_ID,state,county,tract,NAME) & !ends_with(c("NA"))) %>% 
+  
+  pivot_longer(
+    ends_with("N"), names_to = "name", values_to = "estimate") %>%
+  
+  left_join(
+    dec_vars_2020 %>% 
+      select(name, label)) %>% 
+  
+  select(-name) %>% 
+  
+  separate(
+    label, into = c(NA,NA,"category1","category2"), sep = "!!") %>% 
+  
+  mutate(
+    race = case_when(
+      category1 == "Population of two or more races:" & is.na(category2) ~ "Two or more races",
+      category1 == "Population of two or more races:" ~ "",
+      !is.na(category2) ~ category2,
+      TRUE ~ ""
+    ))%>% 
+  
+  filter(race != "") %>% 
+  
+  select(GEOID20 = block, race, pop20 = estimate) %>%
+  pivot_wider(names_from = "race", values_from = "pop20")
+```
+
+
+```{r census data pull}
+dec_vars_2020 <- readRDS(paste0(path_data, "dec_vars_2020.rds"))
+
+#saveRDS(alm_pop_race_2020, paste0(path_data,"alm_pop_race_2020.rds"))
+alm_pop_race_2020 <- readRDS(paste0(path_data, "alm_pop_race_2020.rds"))
+
+
+
+```
+
+
+```{r equity plots}
+
+
+
+
+```
 
 
 
