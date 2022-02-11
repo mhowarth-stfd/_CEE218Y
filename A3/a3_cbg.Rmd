@@ -131,7 +131,7 @@ full_zip_od_routing <- full_zip_od_clean %>%
     cbg = origin %>% substr(1,12),
     tract = origin %>% substr(1,11)
   ) %>% 
-  filter(!duplicated(tract)) # change scale between orgin (block), block group, tract
+  filter(!duplicated(cbg)) # change scale between orgin (block), block group, tract
 ```
 
 
@@ -179,13 +179,13 @@ zip_od_route <-
       }) %>% 
       st_as_sf()
       
-      saveRDS(temp, paste0("temp",y,".rds"))
+      saveRDS(temp, paste0("data/temp",y,".rds"))
       
       return(temp)
     
   })
 
-saveRDS(zip_od_route, "data/zip_od_route_a3_tract.rds")
+saveRDS(zip_od_route, "data/zip_od_route_a3_cbg.rds")
 
 ```
 
@@ -203,12 +203,11 @@ full_zip_od_final <- full_zip_od_clean %>%
       h_geocode,
       w_geocode
     ),
-    cbg = substr(origin, 1, 12),
-    tract = origin %>% substr(1,11)
+    cbg = substr(origin, 1, 12)
   ) %>% 
   left_join(
     full_zip_od_routed %>% 
-      select(tract, duration, distance) #cbg goes here
+      select(cbg, duration, distance) 
   ) %>% 
   mutate(
     visits = S000 * 261
