@@ -1,0 +1,221 @@
+---
+title: "5b"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# set up relative to 94303
+# note if internal zipcode travel is included (5%)
+
+```{r libraries}
+library(tigris)
+library(tidyverse)
+library(censusapi)
+library(sf)
+library(leaflet)
+library(mapboxapi)
+library(jsonlite)
+
+Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
+
+
+
+## adding 'path_item' for easy retrieval
+path <-  "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/LODES/" #"G:/My Drive/218Y/Assignments/2A/data/"
+
+
+```
+
+```{r}
+acs_vars_2019_5yr <-
+  listCensusMetadata(
+    name = "2019/acs/acs5",
+    type = "variables"
+  )
+```
+
+
+```{r}
+ca_od_read <- read_csv(paste0(path,"ca_od_main_JT01_2019.csv.gz"))
+```
+
+
+```{r, eval = F}
+zctas <- zctas()
+
+zip <- zctas %>% 
+  filter(GEOID10 %in% c("95112", "95113"))
+
+blocks <- blocks("CA")
+
+zip_blocks <- blocks %>% 
+  st_centroid() %>% 
+  .[zip, ]
+
+zip_od <- ca_od_read %>% 
+  filter(
+    h_geocode %in% zip_blocks$GEOID10 |
+      w_geocode %in% zip_blocks$GEOID10
+  )
+saveRDS(zip,"data/zip_a3.rds")
+saveRDS(zip_blocks,"data/zip_blocks_a3.rds")
+saveRDS(zip_od,"data/zip_od_a3.rds")
+```
+
+```{r}
+zip_od <- readRDS("data/zip_od_a3.rds")
+```
+
+
+
+
+```{r}
+full_zip_od <- 2013:2019 %>% 
+  map_dfr(function(year){
+    
+    print(year)
+    
+    temp <- read_csv(paste0(path, "ca_od_main_JT01_", year, ".csv.gz")) %>% 
+      filter(
+        h_geocode %in% zip_blocks$GEOID10 |
+          w_geocode %in% zip_blocks$GEOID10
+      ) %>% 
+      mutate(year = year)
+    
+    saveRDS(temp, paste0("data/a3_temp_od_", year, ".rds"))
+    
+    return(temp)
+    
+  })
+
+saveRDS(full_zip_od, paste0("data/full_zip_od_a3.rds"))
+```
+
+```{r}
+
+full_zip_od <- readRDS("data/full_zip_od_a3.rds")
+
+```
+
+
+```{r}
+full_zip_od_clean <- full_zip_od %>% 
+  select(-createdate) %>% 
+  filter(!(
+    h_geocode %in% zip_blocks$GEOID10 &
+      w_geocode %in% zip_blocks$GEOID10
+  )) %>% 
+  mutate(
+    direction = ifelse(
+      h_geocode %in% zip_blocks$GEOID10,
+      "outbound",
+      "inbound"
+    )
+  )
+```
+
+
+```{r}
+full_zip_od_routing <- full_zip_od_clean %>%
+  mutate(
+    origin = ifelse(
+      direction == "inbound",
+      h_geocode,
+      w_geocode
+    ),
+    cbg = origin %>% substr(1,12),
+    tract = origin %>% substr(1,11)
+  ) %>% 
+  filter(!duplicated(tract)) # change scale between orgin (block), block group, tract
+```
+
+
+```{r}
+ca_tracts <- tracts("CA")
+```
+
+
+```{r}
+zip_od_origin <-
+  full_zip_od_routing %>% 
+  select(tract) %>% 
+  left_join(ca_tracts %>% select(tract = GEOID)) %>% 
+  st_as_sf() %>% 
+  st_centroid() %>% 
+  st_coordinates()
+
+zip_od_destination <-
+  zip[1,] %>% 
+  st_centroid() %>% 
+  st_coordinates()
+```
+
+
+```{r}
+zip_od_route <- 
+  1:ceiling(nrow(zip_od_origin)/1000) %>% 
+  map_dfr(function(y){
+    
+    print(y)
+    
+    temp <- (y * 1000 - 999) : pmin(y * 1000, nrow(zip_od_origin)) %>% 
+      map_dfr(function(x){
+        tryCatch(
+          mb_directions(
+            origin = zip_od_origin[x, ],
+            destination = zip_od_destination,
+            profile = "driving-traffic"
+          ) %>% 
+            mutate(id = x),
+          error = function(e){
+            data.frame(id = x)
+          }
+        )
+      }) %>% 
+      st_as_sf()
+      
+      saveRDS(temp, paste0("temp",y,".rds"))
+      
+      return(temp)
+    
+  })
+
+saveRDS(zip_od_route, "data/zip_od_route_a3_tract.rds")
+
+```
+
+
+
+```{r}
+
+full_zip_od_routed <- full_zip_od_routing %>% 
+  cbind(zip_od_route)
+
+full_zip_od_final <- full_zip_od_clean %>% 
+  mutate(
+    origin = ifelse(
+      direction == "inbound",
+      h_geocode,
+      w_geocode
+    ),
+    cbg = substr(origin, 1, 12),
+    tract = origin %>% substr(1,11)
+  ) %>% 
+  left_join(
+    full_zip_od_routed %>% 
+      select(tract, duration, distance) #cbg goes here
+  ) %>% 
+  mutate(
+    visits = S000 * 261
+  )
+
+```
+
+
+
+# can mostly copy textbook routing
