@@ -1,0 +1,202 @@
+---
+title: "A3Y - 4.2"
+author: "Bella Raja"
+date: "2/11/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tigris)
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(mapboxapi)
+
+```
+
+```{r}
+pge_elec_emissions_factor <-
+  data.frame(
+    year = c(2013:2019),
+    factor = c(427,435,405,294,210,206,2.68)
+  )
+
+pge_elec_emissions_factor %>% 
+  ggplot() +
+  geom_line(
+    aes(
+      x = year,
+      y = factor
+    )
+  ) +
+  labs(
+    x = "Year",
+    y = "Pounds of CO2 per MHh",
+    title = "PG&E electricity emissions rate"
+  )
+```
+
+```{r}
+pge_data <- 
+  2013:2019 %>% 
+  map_dfr(function(yr){
+    
+    factor <- 
+      pge_elec_emissions_factor %>% 
+      filter(year == yr) %>% 
+      pull(factor)
+    
+    1:4 %>% 
+      map_dfr(function(quarter){
+        
+        c("Electric","Gas") %>% 
+          map_dfr(function(type){
+            
+            filename <- 
+              paste0(
+                "PGE_",
+                yr,
+                "_Q",
+                quarter,
+                "_",
+                type,
+                "UsageByZip.csv"
+              )
+            
+            temp <- read_csv(filename)
+            
+            if(yr == 2017 & quarter == 4) {
+              temp <- 
+                temp %>% 
+                filter(MONTH != 9)
+            }
+            
+            temp <-
+              temp %>% 
+              rename_all(toupper) %>% 
+              mutate(
+                TOTALKBTU = ifelse(
+                  substr(CUSTOMERCLASS,1,1) == "E",
+                  TOTALKWH * 3.412,
+                  TOTALTHM * 99.976
+                ),
+                TOTALTCO2E = ifelse(
+                  substr(CUSTOMERCLASS,1,1) == "E",
+                  TOTALKWH/1000 * factor * 0.000453592,
+                  TOTALTHM * 0.00531
+                )
+              ) %>% 
+              select(
+                ZIPCODE,
+                YEAR,
+                MONTH,
+                CUSTOMERCLASS,
+                TOTALKBTU,
+                TOTALTCO2E,
+                TOTALCUSTOMERS
+              )
+            
+          })
+        
+      })
+    
+  })
+```
+
+```{r}
+us_zips <- 
+  zctas(cb = T, progress_bar = F)
+
+sc_zips <- 
+  us_zips %>% 
+  st_centroid() %>% 
+  .[counties("CA", cb = T, progress_bar = F) %>% filter(NAME == "Santa Clara"), ] %>% 
+  st_drop_geometry() %>% 
+  left_join(us_zips %>% select(GEOID10)) %>% 
+  st_as_sf() %>% 
+  st_transform(4326)
+```
+
+```{r}
+sc_pge_data <-
+  pge_data %>% 
+  filter(ZIPCODE %in% sc_zips$ZCTA5CE10) %>% 
+  filter(CUSTOMERCLASS %in% c(
+    "Elec- Commercial",
+    "Elec- Residential",
+    "Gas- Commercial",
+    "Gas- Residential"
+  )) %>% 
+  mutate(
+    ENERGYTYPE = substr(CUSTOMERCLASS,1,1)
+  ) %>% 
+  group_by(ZIPCODE, ENERGYTYPE, YEAR) %>% 
+  summarize(
+    TOTALKBTU = sum(TOTALKBTU, na.rm=T),
+    TOTALTCO2E = sum(TOTALTCO2E, na.rm=T), 
+    TOTALCUSTOMERS = mean(TOTALCUSTOMERS, na.rm=T)
+  ) %>% 
+  group_by(ENERGYTYPE, YEAR) %>%
+  summarize(across(
+    c(TOTALKBTU,TOTALTCO2E,TOTALCUSTOMERS),
+    ~sum(.,na.rm=T)
+  ))
+```
+
+
+```{r}
+sj_pge_data <-
+  pge_data %>% 
+  filter(ZIPCODE == "95113"  | ZIPCODE == "95112") %>% 
+  filter(CUSTOMERCLASS %in% c(
+    "Elec- Commercial",
+    "Elec- Residential",
+    "Gas- Commercial",
+    "Gas- Residential"
+  )) %>% 
+  mutate(
+    ENERGYTYPE = substr(CUSTOMERCLASS,1,1)
+  ) %>% 
+  group_by(ZIPCODE, ENERGYTYPE, YEAR) %>% 
+  summarize(
+    TOTALKBTU = sum(TOTALKBTU, na.rm=T),
+    TOTALTCO2E = sum(TOTALTCO2E, na.rm=T), 
+    TOTALCUSTOMERS = mean(TOTALCUSTOMERS, na.rm=T)
+  ) %>% 
+  group_by(ENERGYTYPE, YEAR) %>%
+  summarize(across(
+    c(TOTALKBTU,TOTALTCO2E,TOTALCUSTOMERS),
+    ~sum(.,na.rm=T)
+  ))
+```
+
+```{r}
+ggplot(
+  sj_pge_data, 
+  aes(
+    x = as.factor(YEAR), 
+    y = TOTALKBTU/1000000
+  )
+) + 
+  geom_bar(stat = "identity", aes(fill = ENERGYTYPE), position = "dodge") + 
+  labs(x = "Year", y = "GBTU", title = "Downtown San Jose (95112 & 95113) Annual Energy Usage, 2013 to 2019") + 
+  scale_fill_discrete(name="Energy Type",labels = c("Electricity","Gas"))
+```
+```{r}
+ggplot(
+  sj_pge_data, 
+  aes(
+    x = as.factor(YEAR), 
+    y = TOTALTCO2E
+  )
+) + 
+  geom_bar(stat = "identity", aes(fill = ENERGYTYPE), position = "dodge") + 
+  labs(x = "Year", y = "tCO2e", title = "Downtown San Jose (95112 & 95113) Annual Energy Usage, 2013 to 2019") + 
+  scale_fill_discrete(name="Energy Type",labels = c("Electricity","Gas"))
+```
+
+
