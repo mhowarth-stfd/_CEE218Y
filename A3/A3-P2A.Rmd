@@ -16,6 +16,8 @@ library(sf)
 library(leaflet)
 library(mapboxapi)
 
+# path used in loading pge database
+path <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/3A/data/" # mac path 
 ```
 
 ```{r}
@@ -40,7 +42,7 @@ pge_elec_emissions_factor %>%
   )
 ```
 
-```{r}
+```{r, eval=F}
 pge_data <- 
   2013:2019 %>% 
   map_dfr(function(yr){
@@ -108,6 +110,12 @@ pge_data <-
 ```
 
 ```{r}
+pge_data <- readRDS(paste0(path,"pge_data.rds"))
+```
+
+
+```{r}
+# do we need this section for running? just curious
 us_zips <- 
   zctas(cb = T, progress_bar = F)
 
@@ -122,6 +130,7 @@ sc_zips <-
 ```
 
 ```{r}
+# do we need this section for running? just curious
 sc_pge_data <-
   pge_data %>% 
   filter(ZIPCODE %in% sc_zips$ZCTA5CE10) %>% 
@@ -159,7 +168,7 @@ sj_pge_data <-
     "Gas- Residential"
   )) %>% 
   mutate(
-    ENERGYTYPE = substr(CUSTOMERCLASS,1,1)
+    ENERGYTYPE = CUSTOMERCLASS # switched b/c we are supposed cc to have that as well
   ) %>% 
   group_by(ZIPCODE, ENERGYTYPE, YEAR) %>% 
   summarize(
@@ -167,7 +176,7 @@ sj_pge_data <-
     TOTALTCO2E = sum(TOTALTCO2E, na.rm=T), 
     TOTALCUSTOMERS = mean(TOTALCUSTOMERS, na.rm=T)
   ) %>% 
-  group_by(ENERGYTYPE, YEAR) %>%
+  group_by(ENERGYTYPE, YEAR) %>% 
   summarize(across(
     c(TOTALKBTU,TOTALTCO2E,TOTALCUSTOMERS),
     ~sum(.,na.rm=T)
@@ -184,7 +193,7 @@ ggplot(
 ) + 
   geom_bar(stat = "identity", aes(fill = ENERGYTYPE), position = "dodge") + 
   labs(x = "Year", y = "GBTU", title = "Downtown San Jose (95112 & 95113) Annual Energy Usage, 2013 to 2019") + 
-  scale_fill_discrete(name="Energy Type",labels = c("Electricity","Gas"))
+  scale_fill_discrete(name="Energy Type")
 ```
 ```{r}
 ggplot(
@@ -196,7 +205,62 @@ ggplot(
 ) + 
   geom_bar(stat = "identity", aes(fill = ENERGYTYPE), position = "dodge") + 
   labs(x = "Year", y = "tCO2e", title = "Downtown San Jose (95112 & 95113) Annual Energy Usage, 2013 to 2019") + 
-  scale_fill_discrete(name="Energy Type",labels = c("Electricity","Gas"))
+  scale_fill_discrete(name="Energy Type")
 ```
 
+```{r}
+# start of normalizing by pop
+#zctas <- zctas()
+
+zip <- uszip %>% 
+  filter(GEOID10 %in% c("95112", "95113"))
+
+ca_tracts <- tracts("CA")
+
+zip_tracts <- ca_tracts %>% 
+  st_centroid() %>% 
+  .[zip, ] %>%
+  st_set_geometry(NULL) 
+
+```
+
+```{r}
+
+pop_data <-
+  2013:2019 %>% 
+  map_dfr(function(x){ 
+  
+    temp_pop <-  
+      getCensus(
+        name = "acs/acs5",
+        vintage = x,
+        region = "tract:*",
+        regionin = "state:06+county:085",
+        vars = "C02003_001E"
+      ) %>%
+      mutate(
+        GEOID = paste0(state,county,tract)
+      )
+    
+    temp <- 
+      zip_tracts %>%
+      left_join(temp_pop) %>%
+      summarise(pop = sum(C02003_001E)) %>%
+      mutate(YEAR = x)
+    
+  })
+
+```
+
+```{r}
+
+sj_pge_data_pop_norm <- sj_pge_data %>%
+  left_join(pop_data, by = "YEAR") %>%
+  mutate(
+    Pop_Norm_kBTU = TOTALKBTU / pop,
+    Pop_Norm_CO2E = TOTALTCO2E / pop
+  )
+
+
+```
 
