@@ -26,7 +26,9 @@ Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
 
 
 ## adding 'path_item' for easy retrieval
-path <-  "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/LODES/" #"G:/My Drive/218Y/Assignments/2A/data/"
+# path <-  "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/LODES/" 
+path_data <- "G:/My Drive/218Y/Assignments/3A/"
+path_lodes <- "G:/Shared drives/SFBI/Data Library/LODES"
 
 
 ```
@@ -41,7 +43,7 @@ acs_vars_2019_5yr <-
 
 
 ```{r}
-ca_od_read <- read_csv(paste0(path,"ca_od_main_JT01_2019.csv.gz"))
+ca_od_read <- read_csv(paste0(path_lodes,"ca_od_main_JT01_2019.csv.gz"))
 ```
 
 
@@ -80,7 +82,7 @@ full_zip_od <- 2013:2019 %>%
     
     print(year)
     
-    temp <- read_csv(paste0(path, "ca_od_main_JT01_", year, ".csv.gz")) %>% 
+    temp <- read_csv(paste0(path_lodes, "ca_od_main_JT01_", year, ".csv.gz")) %>% 
       filter(
         h_geocode %in% zip_blocks$GEOID10 |
           w_geocode %in% zip_blocks$GEOID10
@@ -98,7 +100,7 @@ saveRDS(full_zip_od, paste0("data/full_zip_od_a3.rds"))
 
 ```{r}
 
-full_zip_od <- readRDS("data/full_zip_od_a3.rds")
+full_zip_od <- readRDS(paste0(path_data,"data/full_zip_od_a3.rds"))
 
 ```
 
@@ -215,6 +217,151 @@ full_zip_od_final <- full_zip_od_clean %>%
 
 ```
 
+```{r}
+full_zip_od_final <- readRDS(paste0(path_data,"data/full_zip_od_final_cbg.rds"))
+
+full_zip_od_final <- full_zip_od_final %>% 
+  na.omit()
+
+full_zip_od_routed <- readRDS(paste0(path_data,"data/full_zip_od_routed_cbg.rds")) 
+
+```
+
+# routing
+
+```{r}
+
+full_zip_od_routed %>% 
+  st_as_sf() %>% 
+  leaflet() %>% 
+  addMapboxTiles(
+    style_id = "light-v9",
+    username = "mapbox"
+  ) %>% 
+  addPolylines()
+
+```
+
+# UNFINISHED: creating a map of the least visited and most visited blocks; instead of being discrete (top or bottom 100), we can plot all of them however we'll be double plotting the same blocks over time (2013-2019)
+```{r}
+shortest_trips <- full_zip_od_final[order(full_zip_od_final$distance),] %>% 
+  head(1000)
+
+least_visited <- full_zip_od_final[order(full_zip_od_final$visits),] %>% 
+  head(100)
+
+most_visited <- full_zip_od_final[order(-full_zip_od_final$visits),] %>% 
+  head(100)
+
+for (i in 1:100){
+  for (j in 1:length(full_zip_od_routed$w_geocode)){
+    if (least_visited$w_geocode %in% full_zip_od_routed$w_geocode){
+      least_visted$geometry[i] = full_zip_od_routed$geometry[j]
+    }
+  }
+  
+}
 
 
-# can mostly copy textbook routing
+```
+
+
+
+
+
+
+
+# emissions
+
+```{r}
+# read emissions data
+emfac <- read.csv(paste0(path_data,"data/EMFAC2021-EI-202xClass-BayAreaAQMD2013-2014-2015-2016-2017-2018-2019-Summer-20220204082533.csv"), skip = 8) %>%
+  transmute(
+    Category = Vehicle.Category,
+    Fuel_Type = Fuel,
+    Percent_Trips = Trips/sum(Trips),
+    Percent_Miles = `Total.VMT`/sum(Total.VMT),
+    `MTCO2_Running_Exhaust` = CO2_RUNEX/Total.VMT,
+    `MTCO2_Start_Exhaust` = CO2_STREX/Trips
+  )
+
+# total ghg emissions 2013-2019 (summed across all years)
+SJ_trips_ghg <- emfac %>% 
+  mutate(
+    trips = Percent_Trips * sum(full_zip_od_final$visits, na.rm = T),
+    vmt = Percent_Miles * sum(full_zip_od_final$distance, na.rm = T),
+    ghg = vmt * MTCO2_Running_Exhaust + trips*MTCO2_Start_Exhaust*2
+  )
+
+# total vehicle GHGs bw 2013 and 2019
+SJ_TotalGHG <- sum(SJ_trips_ghg$ghg) # in metric tonnes
+
+# want vehicle GHGs per year
+
+## initialize empty data frame
+SJ_ghg <-
+  data.frame(
+    year = c(2013:2019), 
+    emissions = c(2013:2019)*0
+  )
+
+# loop through 2013 and 2019 grabbing final emissions
+for (yr in 2013:2019){
+  for (i in 1:length(2013:2019)){
+    temp_ghg <- emfac %>%
+          mutate(
+            trips = Percent_Trips * SJ_annual$visits[i],
+            vmt = Percent_Miles * SJ_annual$distance[i],
+            ghg = vmt * MTCO2_Running_Exhaust + trips*MTCO2_Start_Exhaust*2
+          )
+        temp_net_ghg <- sum(temp_ghg$ghg)
+        temp_avg_ghg <- mean(temp_ghg$ghg)
+        
+        SJ_ghg$emissions[i] <- temp_net_ghg
+        SJ_ghg$mean_emissions[i] <- temp_avg_ghg
+  }
+}
+
+  
+```
+
+# plotting
+```{r}
+# plotting total annual GHGs
+ggplot(
+  SJ_ghg, 
+  aes(
+    x = as.factor(year),
+    y = emissions
+  )
+) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Year",
+       y = "Emissions (tons)", 
+       title = "Downtown San Jose Vehicle Emissions, 2013 to 2019") 
+
+# plotting average GHG emissions per trip
+ggplot(
+  SJ_ghg, 
+  aes(
+    x = as.factor(year),
+    y = mean_emissions
+  )
+) + 
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Year",
+       y = "Average Emissions (tons)", 
+       title = "Avg Downtown San Jose Vehicle Emissions, 2013 to 2019") 
+
+```
+
+
+
+
+
+
+
+
+
+
+
