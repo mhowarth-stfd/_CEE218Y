@@ -26,10 +26,10 @@ Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
 
 
 ## adding 'path_item' for easy retrieval
-# path <-  "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/LODES/"
-#path_data <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/3A/"
-path_data <- "G:/My Drive/218Y/Assignments/3A/"
-path_lodes <- "G:/Shared drives/SFBI/Data Library/LODES"
+path_lodes <-  "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/LODES/"
+path_data <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/3A/"
+#path_data <- "G:/My Drive/218Y/Assignments/3A/"
+#path_lodes <- "G:/Shared drives/SFBI/Data Library/LODES"
 
 
 ```
@@ -218,6 +218,7 @@ full_zip_od_final <- full_zip_od_clean %>%
 
 ```
 
+
 ```{r}
 full_zip_od_final <- readRDS(paste0(path_data,"data/full_zip_od_final_cbg.rds"))
 
@@ -227,6 +228,19 @@ full_zip_od_final <- full_zip_od_final %>%
 full_zip_od_routed <- readRDS(paste0(path_data,"data/full_zip_od_routed_cbg.rds")) 
 
 ```
+
+
+```{r}
+# job count
+job_count <- full_zip_od_final %>%
+  group_by(year) %>%
+  summarise(JOB = sum(S000)) %>%
+  rename(YEAR = year)
+
+saveRDS(job_count, paste0(path_data,"data/job_count.rds"))
+
+```
+
 
 # routing
 
@@ -275,6 +289,8 @@ for (i in 1:100){
 # emissions
 
 ```{r}
+# SJ_annual does not exist defined above
+
 # read emissions data
 emfac <- read.csv(paste0(path_data,"data/EMFAC2021-EI-202xClass-BayAreaAQMD2013-2014-2015-2016-2017-2018-2019-Summer-20220204082533.csv"), skip = 8) %>%
   transmute(
@@ -323,6 +339,7 @@ for (yr in 2013:2019){
   }
 }
 
+saveRDS(SJ_ghg, paste0(path_data,"data/SJ_ghg_veh.rds")) #added for makign plots
   
 ```
 

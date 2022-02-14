@@ -181,6 +181,8 @@ sj_pge_data <-
     c(TOTALKBTU,TOTALTCO2E,TOTALCUSTOMERS),
     ~sum(.,na.rm=T)
   ))
+
+saveRDS(sj_pge_data, paste0(path,"sj_pge_data.rds"))
 ```
 
 ```{r}
@@ -212,7 +214,7 @@ ggplot(
 # start of normalizing by pop
 #zctas <- zctas()
 
-zip <- uszip %>% 
+zip <- us_zips %>% 
   filter(GEOID10 %in% c("95112", "95113"))
 
 ca_tracts <- tracts("CA")
@@ -253,14 +255,22 @@ pop_data <-
 ```
 
 ```{r}
+job_count <- read_rds(paste0(path,"job_count.rds"))
+```
+
+
+```{r}
 
 sj_pge_data_pop_norm <- sj_pge_data %>%
   left_join(pop_data, by = "YEAR") %>%
+  left_join(job_count, by = "YEAR") %>%
   mutate(
-    Pop_Norm_kBTU = TOTALKBTU / pop,
-    Pop_Norm_CO2E = TOTALTCO2E / pop
+    Pop_Norm_kBTU = case_when(
+      ENERGYTYPE %in% c("Elec- Commercial", "Gas- Commercial") ~ TOTALKBTU / JOB,
+      ENERGYTYPE %in% c("Elec- Residential", "Gas- Residential") ~ TOTALKBTU / pop
+      )
   )
 
-
+saveRDS(sj_pge_data_pop_norm, paste0(path,"sj_pge_data_pop_norm.rds"))
 ```
 

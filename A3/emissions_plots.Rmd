@@ -1,0 +1,86 @@
+---
+title: "Combined Plots"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(plotly)
+path <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/3A/data/"
+```
+
+
+```{r}
+building_emis <- readRDS(paste0(path,"sj_pge_data.rds")) %>%
+  select(`Emission Category` = ENERGYTYPE, CO2E = TOTALTCO2E, Year = YEAR)
+  
+  
+vehicle_emis <- readRDS(paste0(path,"data/SJ_ghg_veh.rds")) %>% 
+  rename(CO2E = emisssions, Year = year) %>% 
+  mutate(`Emission Category` = "Vehicle")
+```
+
+
+```{r}
+
+emissions <- building_emis %>% rbind(vehicle_emis)
+
+```
+
+
+```{r}
+stacked_emis_gg <- emissions %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = Year %>% factor(),
+      y = CO2E,
+      fill = `Emission Category`
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "Year",
+    y = "CO2-eq Emissions []",
+    title = "Downtown San Jose Emissions",
+    fill = "Emission Category"
+  ) 
+  
+
+stacked_emis <- ggplotly(stacked_emis_gg, tooltip="y")
+
+stacked_emis
+```
+
+
+
+```{r}
+prop_emis_gg <- emissions %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = Year %>% factor(),
+      y = CO2E,
+      fill = `Emission Category`
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "Year",
+    y = "CO2-eq Emissions []",
+    title = "Downtown San Jose Emissions",
+    fill = "Emission Category"
+  ) 
+
+prop_emis <- ggplotly(prop_emis_gg, tooltip="y")
+
+prop_emis
+```
+
