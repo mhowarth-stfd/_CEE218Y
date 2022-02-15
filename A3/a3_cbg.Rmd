@@ -26,10 +26,10 @@ Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
 
 
 ## adding 'path_item' for easy retrieval
-path_lodes <-  "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/LODES/"
-path_data <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/3A/"
-#path_data <- "G:/My Drive/218Y/Assignments/3A/"
-#path_lodes <- "G:/Shared drives/SFBI/Data Library/LODES"
+# path_lodes <-  "/Volumes/GoogleDrive/Shared drives/SFBI/Data Library/LODES/"
+# path_data <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/3A/"
+path_data <- "G:/My Drive/218Y/Assignments/3A/"
+path_lodes <- "G:/Shared drives/SFBI/Data Library/LODES"
 
 
 ```
@@ -315,6 +315,12 @@ SJ_TotalGHG <- sum(SJ_trips_ghg$ghg) # in metric tonnes
 
 # want vehicle GHGs per year
 
+## need annual data for visits and distance driven
+SJ_annual <- full_zip_od_final %>% 
+  group_by(year) %>% 
+  summarize(visits = sum(visits),
+            distance = sum(distance))
+
 ## initialize empty data frame
 SJ_ghg <-
   data.frame(
@@ -339,7 +345,7 @@ for (yr in 2013:2019){
   }
 }
 
-saveRDS(SJ_ghg, paste0(path_data,"data/SJ_ghg_veh.rds")) #added for makign plots
+saveRDS(SJ_ghg, paste0(path_data,"data/SJ_ghg_veh.rds")) #added for making plots
   
 ```
 
