@@ -15,9 +15,11 @@ library(tidyverse)
 library(sf)
 library(leaflet)
 library(mapboxapi)
+library(censusapi)
 
 # path used in loading pge database
-path <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/3A/data/" # mac path 
+# path <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/3A/data/" # mac path 
+path <- "G:/My Drive/218Y/Assignments/3A/data/" #PC path
 ```
 
 ```{r}
@@ -116,6 +118,7 @@ pge_data <- readRDS(paste0(path,"pge_data.rds"))
 
 ```{r}
 # do we need this section for running? just curious
+# awoe: no we do not since 
 us_zips <- 
   zctas(cb = T, progress_bar = F)
 
@@ -183,6 +186,8 @@ sj_pge_data <-
   ))
 
 saveRDS(sj_pge_data, paste0(path,"sj_pge_data.rds"))
+
+sj_pge_data <- readRDS(paste0(path,"sj_pge_data.rds"))
 ```
 
 ```{r}
@@ -251,11 +256,23 @@ pop_data <-
       mutate(YEAR = x)
     
   })
-
 ```
 
 ```{r}
+saveRDS(pop_data, paste0(path,"pop_data.rds"))
+```
+
+
+```{r}
 job_count <- read_rds(paste0(path,"job_count.rds"))
+
+HDDs <- readRDS(paste0(path,"HDDs.rds")) %>% 
+  rename(HDD = CanESM2..Average.) %>% 
+  select(-3:-5)
+
+CDDs <- readRDS(paste0(path,"CDDs.rds")) %>% 
+  rename(CDD = CanESM2..Average.) %>% 
+  select(-3:-5)
 ```
 
 
@@ -264,13 +281,22 @@ job_count <- read_rds(paste0(path,"job_count.rds"))
 sj_pge_data_pop_norm <- sj_pge_data %>%
   left_join(pop_data, by = "YEAR") %>%
   left_join(job_count, by = "YEAR") %>%
+  left_join(HDDs, by = c("YEAR" = "year")) %>% 
+  left_join(CDDs, by = c("YEAR" = "year")) %>% 
   mutate(
     Pop_Norm_kBTU = case_when(
       ENERGYTYPE %in% c("Elec- Commercial", "Gas- Commercial") ~ TOTALKBTU / JOB,
       ENERGYTYPE %in% c("Elec- Residential", "Gas- Residential") ~ TOTALKBTU / pop
-      )
+      ),
+    Pop_Norm_kBTU_HDDs = Pop_Norm_kBTU / HDD,
+    Pop_Norm_kBTU_CDDs = Pop_Norm_kBTU / CDD
   )
 
 saveRDS(sj_pge_data_pop_norm, paste0(path,"sj_pge_data_pop_norm.rds"))
+
+sj_pge_data_pop_norm <- readRDS(paste0(path,"sj_pge_data_pop_norm.rds"))
+
 ```
+
+
 
