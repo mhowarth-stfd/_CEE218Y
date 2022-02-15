@@ -1,18 +1,27 @@
 ---
-title: "Combined Plots"
+title: "R Assignment 3"
 output: html_document
+author: "Merrick Howarth"
+date: "February 15, 2022"
 editor_options: 
   chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, meassage = F, warning = F)
 ```
 
 
-```{r}
+```{r, include=FALSE}
 library(tidyverse)
 library(plotly)
+library(tigris)
+library(leaflet)
+library(sf)
+library(mapview)
+
+Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
+
 path <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/3A/data/"
 ```
 
@@ -59,7 +68,7 @@ stacked_emis_gg <- emissions %>%
 
 stacked_emis <- ggplotly(stacked_emis_gg, tooltip="y")
 
-stacked_emis
+
 ```
 
 
@@ -78,14 +87,13 @@ prop_emis_gg <- emissions %>%
   ) +
   labs(
     x = "Year",
-    y = "CO2-eq Emissions [tonnes]",
-    title = "Downtown San Jose Emissions, 2013 to 2019",
+    y = "Proportion of Total CO2-eq Emissions",
+    title = "Proportion Breakdown of Downtown San Jose Emissions, 2013 to 2019",
     fill = "Emission Category"
   ) 
 
 prop_emis <- ggplotly(prop_emis_gg, tooltip="y")
 
-prop_emis
 ```
 
 ```{r}
@@ -113,11 +121,11 @@ an_veh_emis_gg <-
   ) +
   
   labs(x = "Year",
-       y = "Annual Emissions [tonnes]", 
+       y = "Annual Emissions [CO2-eq tonnes]", 
        title = "Downtown San Jose Vehicle Emissions, 2013 to 2019") + 
   theme(legend.position = "none") 
 
-an_veh_emis_gg
+
 
 
 an_veh_emis_zoom_gg <- 
@@ -132,13 +140,13 @@ an_veh_emis_zoom_gg <-
     )
   ) +
   labs(x = "Year",
-       y = "Annual Emissions [tonnes]", 
+       y = "Annual Emissions [CO2-eq tonnes]", 
        title = "Downtown San Jose Vehicle Emissions, 2013 to 2019") + 
   theme(legend.position = "none") 
 
 
 an_veh_emis_zoom <-ggplotly(an_veh_emis_zoom_gg, tooltip = "y")
-an_veh_emis_zoom
+
 
 
 # plotting average GHG emissions per trip
@@ -164,11 +172,11 @@ ave_veh_emis_gg <-
   ) +
   
   labs(x = "Year",
-       y = "Average Emissions [tonnes]", 
+       y = "Average Emissions [CO2-eq tonnes]", 
        title = "Avg Downtown San Jose Vehicle Emissions, 2013 to 2019") + 
   theme(legend.position = "none") 
 
-ave_veh_emis_gg
+
 
 
 
@@ -184,14 +192,29 @@ ave_veh_emis_zoom_gg <-
     )
   ) +
   labs(x = "Year",
-       y = "Average Emissions [tonnes]", 
+       y = "Average Emissions [CO2-eq tonnes]", 
        title = "Avg Downtown San Jose Vehicle Emissions, 2013 to 2019") + 
   theme(legend.position = "none")
 
 ave_veh_emis_zoom <-ggplotly(ave_veh_emis_zoom_gg, tooltip = "y")
-ave_veh_emis_zoom
+
 ```
 
+```{r}
+
+
+building_emis_plot <-  
+  ggplot(
+    building_emis, 
+  aes(
+    x = as.factor(Year), 
+    y = CO2E
+  )
+) + 
+  geom_bar(stat = "identity", aes(fill = `Emission Category`), position = "dodge") + 
+  labs(x = "Year", y = "Annual Emissions [CO2-eq tonnes]", title = "Downtown San Jose (95112 & 95113) Annual Building Emissions, 2013 to 2019") + 
+  scale_fill_discrete(name="Energy Type")
+```
 
 
 
@@ -231,11 +254,155 @@ norm_energy_plot_gg <-
   labs(
     x = "Year",
     y = "Normalized Energy Use [kBTU]",
-    title = "Population and Temperature Normalized Energy Use ",
+    title = "Population and Temperature Normalized Energy Use, 2013 to 2019",
     color = "Normalized"
   ) 
 
 norm_energy_plot <-ggplotly(norm_energy_plot_gg, tooltip = "y")
+
+```
+
+
+```{r, include = F}
+zctas <- zctas()
+
+zip <- zctas %>% 
+  filter(GEOID10 %in% c("95112", "95113"))
+
+zip_map <- leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+  addPolygons(
+    data = zip, 
+  ) %>%
+  addCircles(
+    data = zip %>% st_centroid
+  )
+
+
+```
+
+```{r}
+zip_od_route <- readRDS(paste0(path, "full_zip_od_routed_cbg.rds")) 
+
+zip_od_route_sorted <- zip_od_route[order(zip_od_route$distance),]
+
+shortest_routes <- zip_od_route_sorted[((round(nrow(zip_od_route_sorted)/20))-49):(round(nrow(zip_od_route_sorted)/20)+50),] %>% 
+  st_as_sf() %>% 
+  st_set_crs(st_crs(zip))
+
+short_routes <- zip_od_route_sorted[(nrow(zip_od_route_sorted)/4-49):(nrow(zip_od_route_sorted)/4+50),] %>% 
+  st_as_sf() %>% 
+  st_set_crs(st_crs(zip))
+
+mid_routes <- zip_od_route_sorted[(nrow(zip_od_route_sorted)/2-49):(nrow(zip_od_route_sorted)/2+50),] %>% 
+  st_as_sf() %>% 
+  st_set_crs(st_crs(zip))
+
+longest_routes <- zip_od_route_sorted[(nrow(zip_od_route_sorted)-99):nrow(zip_od_route_sorted),] %>% 
+  st_as_sf() %>% 
+  st_set_crs(st_crs(zip))
+
+routes_map <- leaflet() %>% 
+  addProviderTiles(provider = providers$CartoDB.Positron) %>%   
+  addPolygons(
+    data = zip, 
+  ) %>%
+  addPolylines(
+    data = shortest_routes, 
+    group = "100 Routes @ 5% Length"
+  ) %>%
+  addPolylines(
+    data = short_routes, 
+    group = "100 Routes @ 25% Length"
+  ) %>%
+  addPolylines(
+    data = mid_routes, 
+    group = "100 Routes @ 50% Length"
+  ) %>%
+  addPolylines(
+    data = longest_routes, 
+    group = "100 Routes @ 100% Length"
+  ) %>%
+  addCircles(
+    data = zip %>% st_centroid
+  )%>%
+  addLayersControl(
+    baseGroups = c("100 Routes @ 5% Length", "100 Routes @ 25% Length", "100 Routes @ 50% Length", "100 Routes @ 100% Length"),
+    options = layersControlOptions(collapsed = FALSE)
+  )
+
+```
+
+
+## Introduction
+
+In this assignment, we were tasked with performing a sustainability analysis of an area of interest in the Bay Area. Our analysis was focused on the larger downtown San Jose area. To capture this area, we included 95112 and 95113 in our analysis. We took particular interest in these zip codes since to our knowledge they represent some of the more dense urban populations in San Jose and we had particular interest in San Jose since they seem to have clear and well developed sustainability initiatives. The two zip codes can be seen below, with 95112 being the larger zipcode and 95113 being the smaller. The centroids are also denoted with the blue dots on the map. 
+
+```{r}
+zip_map
+```
+
+
+
+## Vehicle Emissions
+
+It should be noted that in calculating vehicle emissions, two key assumptions were made. For simplified calculations, all trips were routed to the center of the larger zip code. This allowed for a significant reduction in complication of calculations and the distances covered within a zipcode are likely negligible. Additionally, we felt combining to one centroid across zip codes was a safe assumption since the area of the 95113 zip code is closer to the 95112 centroid than much of the area captured by the 95112 zip code. Our second major assumption was to not include trips within or between our selected zip codes of interest, theses are the smallest distances and will likely have minimal impact. 
+Routing was conducted between Census Block Groups.
+
+Shown below is a map which demonstrates some of the route lengths, there were just under 20,000 unique routes for about 550,000 commutes which each had any number of jobs resulting in 590,037 individual commutes for the 7 years of analysis.
+The map considers strictly route length, showing the 100 longest commutes and a collection of 100 commutes at the 5%, 25% and 50% longest potential length commutes. The map does not indicate frequency of commute. 
+
+```{r}
+routes_map
+```
+
+I was surprised to see that it took going down to the 5% shortest routs to be contained in the bay area, but do feel that this may have been due to the limited potential routes between block groups in the bay area and a plot which captures frequency of route may be more valuable. The actual annual commuter vehicle emission for our two zip codes can be seen below. 
+
+```{r}
+an_veh_emis_gg
+
+```
+
+I do not find the above plot particularly surprising. As we have improved vehicle technology we were using improvemtns to increase capacity, not necessarily with the goal of decreasing emissions. In 2019 there was the beginning of a shift towards decreasing which may be accountable to increasing prevalence of electric vehicles and that trend may continue in part due to EVs. I am overall confident that commuter emissions will be decreasing if monitoring was carried out to more recent times as the pandemic has lead to a culture shift towards working from home and commuting less.
+
+
+## Building Emissions
+
+Building emissions were generated from PG&E data and was combined between our two zipcodes of interest. Total annual building emissions can be seen in the plot below.
+
+```{r}
+building_emis_plot
+```
+
+
+When reviewing the building emissions, I was surprised to see electricity emissions trending towards 0, which we discussed in class. Looking forward with increased emphasis on renewable energy, I would image a more realistic measure of electricity emissions will actually tend towards 0 and not just due to an accounting loophole. Considering the  proportion of US energy consumption which is renewable sits between 10%-15%, I do not anticipate this to be very soon though.
+
+As far as energy consumption trends, captured by energy normalized by temperature and population or jobs, I am surprised to see consumption largely remain level or trend down, as can be seen below. 
+
+```{r}
 norm_energy_plot
 ```
 
+I am lead to assume this is largely due to improving technology. This prompts me to think of the I = PAT equation and since population is controlled for in our normalization and affluence has not seemed to decrease, technology has really stepped up in helping improve energy consumption. I feel this promising trend in consideration of the future as hopefully techno;ogy will continue to improve and our buildings will continue to need less energy to run. 
+The one trend which increased is the gas usage of commercial buildings though I am not sure what the driver of this change would be.
+
+
+## Total Emissisons 
+
+The total emissions for San Jose calculated as the sum of commuter vehicle and residential and commercial buildings is shown bellow. The values for each were calculated as discussed above. Below two plots can be seen, a stacked bar chart, indicating overall emissions trends, and a proportioned bar chart, indicating what catagories played what roles in emissions overtime. 
+
+```{r}
+stacked_emis
+
+prop_emis
+```
+
+Looking at the plots, I do find it promising that the overall trend is decreasing, though I maintain some skepticism. As mentioned above, I struggle to trust essentially 0 emissions associated with electricity and that the emissions may not be decreasing at the rate they seem to, especially considering increasing gas consumption. 
+
+Something which stuck out to me was that vehicle emissions were quite low comparatively as well, making up at most 7% of the total emissions as can be seen in the total emissions proportion plot. This is extremely different from the 41% of total US emissions identified in class. I think this issue largely stems from allocation problem discussed in class. By only capturing commuting vehicle emissions, we do not see the impact of consumer goods transportation, which I believe makes up a significant portion of total transportation emissions.  While this problem could potentially benefit from assigning emissions to any vehicle in a municipalities boundaries, many communities who receive no economic benefit would be affected and a lot of transportation emissions would still be unaccounted for. I think handling this problem begins with more products having known emissions associated with them. Transportation emissions come from a number of modes and so starting with more  transportation analysis will ensure less emissions fall through the cracks. Once there is a better grasp on total emissions associated with a product, I think the issue of distributing these emissions should fall largely on factories, company owners, and consumers in hopes of discouraging emissions. The actual distribution would definitely require extensive fine tuning but could be percentage based.
+
+Reviewing these plots I am left to wonder how building emissions could be quelled some. It seems like a reduction in emssions assocaited with gas would be a good way to reduce over all emissions for San Jose as this is as the primary source which has remain the same or grown over our analysis years.
+
+Managing sustainability issues is a large and ever growing problem which can be exceedingly difficult to measure. I enjoyed being able to begin learning some strategies in tackling these problems myself with this assignment.
+
+Code developed in coordination with Awoe Mauna-Woanya and Bella Raja
