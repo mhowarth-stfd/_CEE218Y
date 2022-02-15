@@ -1,5 +1,5 @@
 ---
-title: "5b"
+title: "Vehicle Emissions"
 output: html_document
 editor_options: 
   chunk_output_type: console
@@ -9,8 +9,8 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# set up relative to 94303
-# note if internal zipcode travel is included (5%)
+
+
 
 ```{r libraries}
 library(tigris)
@@ -52,7 +52,7 @@ ca_od_read <- read_csv(paste0(path_lodes,"ca_od_main_JT01_2019.csv.gz"))
 zctas <- zctas()
 
 zip <- zctas %>% 
-  filter(GEOID10 %in% c("95112", "95113"))
+  filter(GEOID10 %in% c("95112", "95113")) #considering two zipcodes which make up most of area in downtown san jose, discluding travel between the two zip codes
 
 blocks <- blocks("CA")
 
@@ -77,7 +77,7 @@ zip_od <- readRDS("data/zip_od_a3.rds")
 
 
 
-```{r}
+```{r, eval = F}
 full_zip_od <- 2013:2019 %>% 
   map_dfr(function(year){
     
@@ -289,7 +289,6 @@ for (i in 1:100){
 # emissions
 
 ```{r}
-# SJ_annual does not exist defined above
 
 # read emissions data
 emfac <- read.csv(paste0(path_data,"data/EMFAC2021-EI-202xClass-BayAreaAQMD2013-2014-2015-2016-2017-2018-2019-Summer-20220204082533.csv"), skip = 8) %>%
