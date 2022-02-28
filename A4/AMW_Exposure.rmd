@@ -1,0 +1,171 @@
+---
+title: "AMW_Exposure"
+author: "Awoenam Mauna-Woanya"
+date: "2/26/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(mapboxapi)
+library(raster)
+library(stars)
+library(tigris)
+
+path_data = "G:/My Drive/218Y/Assignments/4A/data/"
+```
+
+```{r}
+# osm_blg <- st_read("G:/Shared drives/SFBI/Data Library/OSM/gis_osm_buildings_a_free_1.shp")
+
+# saveRDS(osm_blg, "G:/My Drive/218Y/Assignments/4A/data/osm_blg.rds")
+
+# osm_blg <- readRDS(paste0(path_data, "osm_blg.rds"))
+
+epa_boundary <- 
+  places("CA", cb = T) %>% 
+  filter(NAME == "East Palo Alto") %>% 
+  st_transform(4326)
+
+fostercity_boundary <- places("CA") %>% 
+  filter(NAME == "Foster City") %>% 
+  st_transform(4326)
+
+# epa_blg <- osm_blg[epa_boundary,]
+# fc_blg <- osm_blg[fostercity_boundary,]
+
+# saveRDS(fc_blg, "G:/My Drive/218Y/Assignments/4A/data/fc_bldg.rds")
+
+epa_bldg <- readRDS("epa_bldg.rds")
+fc_bldg <- readRDS(paste0(path_data,"fc_bldg.rds"))
+
+```
+
+```{r}
+# grab our worst flood scenario
+flood_max <- raster("FC_flood/SLR050_RP100_FC_flood.tif")
+
+# crop it to outer boundaries
+flood_max_extent <- 
+  flood_max %>% 
+  st_as_stars() %>% 
+  mutate(SLR050_RP100_FC_flood = ifelse(
+    !is.na(SLR050_RP100_FC_flood),
+    1,
+    NA
+  )) %>% 
+  st_as_sf(merge = T) %>% 
+  st_set_crs(26910) %>% 
+  st_make_valid() %>% 
+  st_transform(4326)
+
+# grab buildings in our boundaries for our worst flood
+FC_bldg_flooded_max <- 
+  fc_bldg %>% 
+  st_transform(4326) %>% 
+  .[flood_max_extent, ]
+
+
+
+```
+
+Visualizing
+```{r}
+flood_pal <- colorNumeric(
+  palette = "Blues",
+  domain = values(flood_max),
+  na.color = "transparent"
+)
+
+leaflet() %>% 
+  addMapboxTiles(
+    style_id = "satellite-streets-v11",
+    username = "mapbox",
+    options = tileOptions(opacity = 0.5)
+  ) %>% 
+  addRasterImage(
+    flood_max,
+    colors = flood_pal,
+    opacity = 0.75, 
+    maxBytes = Inf
+  ) %>% 
+  addPolygons(
+    data = FC_bldg_flooded_max,
+    fill = F,
+    color = "red",
+    weight = 0.5
+  ) %>% 
+  addLegend(
+    pal = flood_pal,
+    values = values(flood_max),
+    title = "Flood depth, cm"
+  )
+
+```
+
+Looping through various flood scenarios and grabbing our blding footprint as a result
+```{r}
+fc_bldg_exposure <- NULL
+
+for(slr in c("000", "025", "050")){
+  
+  for(rp in c("001", "020", "100")){
+    
+    print(paste0("SLR", slr,"_RP", rp))
+    
+    flood <- raster(paste0("FC_flood/SLR",slr,"_RP",rp,"_FC_flood.tif"))
+    
+    flood_extent <- 
+      (flood > -Inf) %>% 
+      st_as_stars() %>% 
+      st_as_sf(merge = T) %>% 
+      st_set_crs(26910) %>% 
+      st_make_valid() %>% 
+      st_transform(4326)
+    
+    fc_bldg_flooded <- 
+      FC_bldg_flooded_max[flood_extent, ] %>% 
+      st_transform(26910)
+    
+    flood_crop <- 
+      crop(flood, fc_bldg_flooded)
+    
+    flood_crop[is.na(flood_crop)] <- 0
+    
+    temp <- 
+      extract(
+        flood_crop,
+        fc_bldg_flooded,
+        fun = mean
+      ) %>% 
+      as.data.frame() %>% 
+      rename(avg_depth = V1) %>% 
+      cbind(fc_bldg_flooded %>% 
+              st_drop_geometry() %>% 
+              dplyr::select(osm_id)
+            ) %>% 
+      mutate(
+        SLR = slr,
+        RP = rp
+      )
+    
+    fc_bldg_exposure <- 
+      fc_bldg_exposure %>% 
+      rbind(temp)
+  }
+}
+
+saveRDS(fc_bldg_exposure, "G:/My Drive/218Y/Assignments/4A/data/fc_bldg_exposure.rds")
+
+# 
+
+```
+
+```{r}
+
+```
+
