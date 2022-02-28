@@ -134,6 +134,7 @@ sc_zips <-
 
 ```{r}
 # do we need this section for running? just curious
+#bella: no, zipcodes incorporated in next chunk
 sc_pge_data <-
   pge_data %>% 
   filter(ZIPCODE %in% sc_zips$ZCTA5CE10) %>% 
