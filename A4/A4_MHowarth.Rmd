@@ -1,0 +1,686 @@
+---
+title: "5.1.4"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(sf)
+library(leaflet)
+library(mapboxapi)
+library(tigris)
+#library(jsonlite)
+library(esri2sf)
+library(mapview)
+library(censusapi) 
+library(raster)
+library(stars)
+library(plotly)
+
+
+Sys.setenv(CENSUS_KEY="dbcdeeed2f9e907f31811ee78c1f239a2aa77934")
+```
+
+
+# flood data
+```{r, eval=F}
+
+slr <- 50
+rp <- 100
+
+path <- paste0("data/san_mateo_flooding_slr",str_pad(slr, 3, "left", "0"),"/flooding/v2.1/county_san_mateo_flddepth_slr",str_pad(slr, 3, "left", "0"),"_w",str_pad(rp, 3, "left", "0"),".tif")
+
+test_flood <- raster(path)
+```
+
+
+```{r, eval=F}
+fc_boundary <- places("CA") %>% # only needed line
+  filter(NAME == "Foster City")
+
+test_flood_fc <- test_flood %>% 
+  crop(
+    fc_boundary %>% 
+      st_transform(26910) %>% 
+      st_bbox()
+  )
+
+plot(test_flood_fc)
+```
+
+
+```{r, eval=F}
+flood_pal <- colorNumeric(
+  palette = "Blues",
+  domain = values(test_flood_fc),
+  na.color = "transparent"
+)
+
+leaflet() %>% 
+  addMapboxTiles(
+    style_id = "satellite-streets-v11",
+    username = "mapbox",
+    options = tileOptions(opacity = 0.5)
+  ) %>% 
+  addRasterImage(
+    flood_max,
+    colors = test_flood_fc
+  ) %>% 
+  addLegend(
+    pal = flood_pal,
+    values = values(test_flood_fc),
+    title = "Flood depth, cm"
+  )
+```
+
+
+```{r flood data 1, eval = F}
+
+fc_boundary <- places("CA") %>% 
+  filter(NAME == "Foster City")
+
+for(slr in c("000","025","050")){
+  
+  for(rp in c("001","020","100")){
+    
+    print(paste0("SLR",slr,"_RP",rp))
+    
+    path <- paste0("data/san_mateo_flooding_slr",slr,"/flooding/v2.1/county_san_mateo_flddepth_slr",slr,"_w",rp,".tif")
+    
+    flood <- raster(path) %>% 
+      crop(
+        fc_boundary %>% 
+          st_transform(26910) %>% 
+          st_bbox()
+      )
+    
+    writeRaster(flood, paste0("data/flood/SLR",slr,"_RP",rp,"_fc_flood.tif"), overwrite = T)
+    
+  }
+}
+```
+
+
+# exposure
+
+```{r exposure_1, eval=F}
+
+osm_bldg <- st_read("data/building_outlines/gis_osm_buildings_a_free_1.shp")
+
+fc_boundary <- fc_boundary %>% st_transform(4326)
+
+fc_bldg <- osm_bldg[fc_boundary, ]
+```
+
+
+```{r}
+fc_bldg <- readRDS("data/fc_bldg.rds")
+```
+
+
+```{r  exposure_2}
+
+flood_max <- raster("data/flood/SLR050_RP100_fc_flood.tif")
+
+flood_max_extent <- 
+  flood_max %>% 
+  st_as_stars() %>% 
+  mutate(SLR050_RP100_fc_flood = ifelse(
+    !is.na(SLR050_RP100_fc_flood),
+    1,
+    NA
+  )) %>% 
+  st_as_sf(merge = T) %>% 
+  st_set_crs(26910) %>% 
+  st_make_valid() %>% 
+  st_transform(4326)
+
+fc_bldg_flooded_max <-
+  fc_bldg %>% 
+  st_transform(4326) %>% 
+  .[flood_max_extent,]
+
+saveRDS(fc_bldg_flooded_max, "data/fc_bldg_flooded_max.rds")
+
+```
+
+
+```{r}
+flood_pal <- colorNumeric(
+  palette = "Blues",
+  domain = values(flood_max),
+  na.color = "transparent"
+)
+
+leaflet() %>% 
+  addMapboxTiles(
+    style_id = "satellite-streets-v11",
+    username = "mapbox",
+    options = tileOptions(opacity = 0.5)
+  ) %>% 
+  addRasterImage(
+    flood_max,
+    colors = flood_pal,
+    opacity = 0.75,
+    maxBytes = Inf
+  ) %>% 
+  addPolygons(
+    data = fc_bldg_flooded_max,
+    fill = F,
+    color = "red",
+    weight = 0.5
+  ) %>% 
+  addLegend(
+    pal = flood_pal,
+    values = values(flood_max),
+    title = "Flood depth, cm"
+  )
+```
+
+
+```{r exposure_3, eval=F}
+
+fc_bldg_exposure <- NULL
+
+for(slr in c("000","025","050")){
+  
+  for(rp in c("001","020","100")){
+    
+    print(paste0("SLR",slr,"_RP",rp))
+    
+    flood <- raster( paste0("data/flood/SLR",slr,"_RP",rp,"_fc_flood.tif"))
+    
+    flood_extent <- 
+      (flood > -Inf) %>% 
+      st_as_stars() %>% 
+      st_as_sf(merge = T) %>% 
+      st_set_crs(26910) %>% 
+      st_make_valid() %>% 
+      st_transform(4326)
+    
+    fc_bldg_flooded <-
+      fc_bldg_flooded_max[flood_extent,] %>% 
+      st_transform(26910)
+    
+    flood_crop <-
+      crop(flood, fc_bldg_flooded)
+    
+    flood_crop[is.na(flood_crop)] <- 0
+    
+    temp <-
+      extract(
+        flood_crop,
+        fc_bldg_flooded,
+        fun = mean
+      ) %>% 
+      as.data.frame() %>% 
+      rename(avg_depth = V1) %>% 
+      cbind(
+        fc_bldg_flooded %>% 
+          st_drop_geometry() %>% 
+          dplyr::select(osm_id)
+      ) %>% 
+      mutate(
+        SLR = slr,
+        RP = rp
+      )
+    
+    fc_bldg_exposure <- 
+      fcbldg_exposure %>% 
+      rbind(temp)
+    
+  }
+}
+
+saveRDS(fc_bldg_exposure,"data/fc_bldg_exposure.rds")
+
+```
+
+
+```{r exposure_veh_1, eval = F}
+
+fc_cbg <- block_groups("CA","San Mateo", cb = F, progress_bar = F, year = 2019) %>% 
+  filter(GEOID %in% c("060816080012", "060816080011")) %>% 
+  st_transform(4326)
+
+fc_bldgs <- readRDS("data/fc_bldg.rds") %>% 
+  .[fc_cbg,]
+
+fc_blocks <- 
+  #blocks("CA","San Mateo", progress_bar = F, year = 2020) %>% 
+  readRDS("data/sm_blocks.rds") %>% 
+  st_transform(4326) %>% 
+  .[fc_bldgs,]
+
+acs_vars_2019_5yr <- readRDS("data/acs_vars_2019_5yr.rds")
+
+fc_blocks_pop <-
+  getCensus(
+    name = "dec/pl",
+    vintage = 2020,
+    region = "block:*", 
+    regionin = "state:06+county:081",
+    vars = "P1_001N"
+  ) %>% 
+  transmute(
+    GEOID20 = paste0(state,county,tract,block),
+    pop = P1_001N
+  ) %>% 
+  filter(GEOID20 %in% fc_blocks$GEOID20)
+
+smc_bg_vehicle <-
+  getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "block group:*",
+    regionin = "state:06+county:081",
+    vars = "group(B25044)"
+  ) %>% 
+  mutate(
+    cbg =
+      paste0(state,county,tract,block_group)
+  ) %>% 
+  dplyr::select(!c(GEO_ID,state,county,tract,block_group,NAME) & !ends_with(c("EA","MA","M"))) %>%
+  pivot_longer(
+    ends_with("E"),
+    names_to = "variable",
+    values_to = "estimate"
+  ) %>%
+  left_join(
+    acs_vars_2019_5yr %>% 
+      dplyr::select(name, label), 
+    by = c("variable" = "name")
+  ) %>% 
+  dplyr::select(-variable) %>% 
+  separate(
+    label,
+    into = c(NA, NA, "tenure", "vehicles"),
+    sep = "!!"
+  ) %>% 
+  filter(!is.na(vehicles)) %>% 
+  filter(cbg %in% fc_cbg$GEOID)
+
+smc_bg_vehicle_total <- smc_bg_vehicle %>% 
+  filter(vehicles != "No vehicle available") %>% 
+  mutate(
+    vehicles = substr(vehicles,1,1) %>% as.numeric(),
+    vehicle_count = estimate * vehicles
+  ) %>% 
+  group_by(cbg) %>% 
+  summarize(vehicle_count = sum(vehicle_count))
+
+
+# table break down of vehicles
+
+smc_bg_vehicle_table <- smc_bg_vehicle %>% 
+  filter(vehicles != c("No vehicle available")) %>% 
+  mutate(
+    vehicles = substr(vehicles,1,1) %>% as.numeric(),
+    vehicle_count = estimate * vehicles
+  ) %>% 
+  group_by(cbg, tenure) %>% 
+  summarize(vehicle_count = sum(vehicle_count), vehicles = "Total Vehicle Count") %>%
+  rbind(smc_bg_vehicle %>% 
+          filter(vehicles %in% c("No vehicle available", "1 vehicle available")
+                 ) %>% 
+          rename(vehicle_count = estimate)
+        ) %>%
+  pivot_wider(names_from = vehicles, values_from = vehicle_count) %>%
+  knitr::kable()
+
+```
+
+
+```{r exposure_veh_2, eval = F}
+
+# table worth including for calling out flaw in applying method with apartments
+fc_block_veh_per_bldg <-
+  fc_bldgs %>% 
+  filter(is.na(type) | type %in% c("residential", "house", "apartments")) %>% # any non-residential buildings?
+  dplyr::select(osm_id) %>% # unique ID for each building
+  st_centroid() %>% 
+  st_join(fc_blocks %>% dplyr::select(GEOID20)) %>% # block shapes
+  st_join(fc_cbg %>% dplyr::select(cbg = GEOID)) %>% # cbg shapes
+  st_drop_geometry() %>% 
+  group_by(GEOID20,cbg) %>% # "assuming population is distributed evenly across buildings in a block"
+  summarize(bldg_count = n()) %>% # how to get counts?
+  left_join(fc_blocks_pop) %>% # census dataset
+  left_join(smc_bg_vehicle_total) %>% # census dataset
+  group_by(cbg) %>% # "and vehicles are distributed evenly across population"
+  mutate(
+    veh_per_person = vehicle_count/sum(pop),
+    ppl_per_bldg = pop/bldg_count,
+    veh_per_bldg = veh_per_person*ppl_per_bldg # fractional result ok
+  ) %>% 
+  ungroup()
+
+# dataset with individual buildings, vehicle counts for each building
+fc_veh_per_bldg <- fc_bldgs %>% 
+  filter(is.na(type) | type %in% c("residential", "house", "apartments")) %>% 
+  dplyr::select(osm_id)  %>% 
+  st_centroid() %>% 
+  st_join(fc_blocks %>% dplyr::select(GEOID20)) %>% 
+  left_join(fc_block_veh_per_bldg %>% dplyr::select(GEOID20, veh_per_bldg))
+
+saveRDS(fc_veh_per_bldg, "data/fc_veh_per_bldg.rds")
+```
+
+
+```{r}
+fc_bldg_exposure <- readRDS("data/fc_bldg_exposure.rds")
+fc_veh_per_bldg <- readRDS("data/fc_veh_per_bldg.rds")
+
+fc_veh_exposure <- fc_bldg_exposure %>% 
+  left_join(fc_veh_per_bldg %>% 
+              st_set_geometry(NULL) %>% 
+              dplyr::select(
+                osm_id, 
+                veh_per_bldg
+                )
+            ) %>%
+  filter(!is.na(veh_per_bldg))
+
+saveRDS(fc_veh_exposure, "data/fc_veh_exposure.rds")
+  
+```
+
+
+```{r pov}
+# table for poverty
+
+smc_bg_pov <-
+  getCensus(
+    name = "acs/acs5",
+    vintage = 2019,
+    region = "block group:*",
+    regionin = "state:06+county:081",
+    vars = c("B17010_001E", "B17010_002E")
+  ) %>% 
+  mutate(
+    cbg =
+      paste0(state,county,tract,block_group)
+  ) %>% 
+  filter(cbg %in% fc_cbg$GEOID) %>%
+  transmute(
+    `Census Block Group` = cbg,
+    `Total Households` = B17010_001E, 
+    `Households below the Poverty Line` = B17010_002E) %>%
+  knitr::kable()
+
+
+```
+
+ assume all vehiclies are sedans that cost $25,000 i think
+# 5.3
+```{r vulnerability}
+vulnerability <- data.frame(
+  depth = c(0.5,1:10),
+  perc_damage = 
+    c(
+      .076,
+      .28,
+      .462,
+      .622,
+      .76,
+      .876,
+      .97,
+      1,
+      1,
+      1,
+      1
+    )
+  ) 
+
+
+fc_veh_exposure <- 
+  readRDS("data/fc_veh_exposure.rds") %>%
+  mutate(avg_depth = avg_depth * 0.0328084)
+
+
+fc_veh_perc_damage <- 
+  approx(
+    x = vulnerability$depth,
+    y = vulnerability$perc_damage,
+    xout = fc_veh_exposure$avg_depth
+  ) %>% 
+  .[2] %>% 
+  as.data.frame() %>% 
+  rename(perc_damage = y) %>% 
+  cbind(fc_veh_exposure) %>%
+  mutate(
+    perc_damage = case_when(
+      is.na(perc_damage) ~ 0,
+      !is.na(perc_damage) ~ perc_damage
+    )
+  )
+
+saveRDS(fc_veh_perc_damage,"data/fc_veh_perc_damage.rds")
+
+```
+
+
+```{r vulnerability plot slr slider}
+fc_veh_perc_damage_plot <- 
+  expand.grid(
+    osm_id = unique(fc_veh_perc_damage$osm_id),
+    SLR = unique(fc_veh_perc_damage$SLR),
+    RP = unique(fc_veh_perc_damage$RP)
+  ) %>% 
+  left_join(fc_veh_perc_damage) 
+
+
+fc_plot_slr_sldr <- 
+  plot_ly() %>% 
+  add_trace(
+    data = 
+      fc_veh_perc_damage_plot %>% 
+        filter(RP == "001") %>% 
+        mutate(SLR = SLR %>% as.numeric()),
+    x = ~avg_depth,
+    y = ~perc_damage,
+    frame = ~SLR,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(
+      color = 'rgba(17, 157, 255, 0.01)',
+      size = 15
+    ),
+    showlegend = F
+  ) %>% 
+  add_trace(
+    data = vulnerability,
+    x = ~depth,
+    y = ~perc_damage,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(
+      color = 'rgb(0,0,0)'
+    ),
+    showlegend = F
+  ) %>% 
+  layout(
+    xaxis = list(
+      title = "Average Flood Depth",
+      zeroline = FALSE
+    ),
+    yaxis = list(
+      title = "Percent Damage"
+    ),
+    title = "Foster City vehicle damage during<br>100-year storm, by base sea level rise"
+  ) %>% 
+  config(displayModeBar = F)
+
+fc_plot_rtp_sldr <- 
+  plot_ly() %>% 
+  add_trace(
+    data = 
+      fc_veh_perc_damage_plot %>% 
+        filter(SLR == "050") %>% 
+        mutate(RP = RP %>% as.numeric()),
+    x = ~avg_depth,
+    y = ~perc_damage,
+    frame = ~RP,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(
+      color = 'rgba(17, 157, 255, 0.01)',
+      size = 15
+    ),
+    showlegend = F
+  ) %>% 
+  add_trace(
+    data = vulnerability,
+    x = ~depth,
+    y = ~perc_damage,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(
+      color = 'rgb(0,0,0)'
+    ),
+    showlegend = F
+  ) %>% 
+  layout(
+    xaxis = list(
+      title = "Storm Return Period (Severity)",
+      zeroline = FALSE
+    ),
+    yaxis = list(
+      title = "Percent Damage"
+    ),
+    title = "Foster City vehicle damage during<br>50 cm sea level rise, by storm return period"
+  ) %>% 
+  config(displayModeBar = F)
+
+
+```
+
+
+
+
+# 5.4
+
+
+```{r risk_est_1}
+# attaching value
+
+detach("package:raster")
+
+
+fc_veh_damage <- readRDS("data/fc_veh_perc_damage.rds") %>% 
+  mutate( 
+    damage = 25000 * perc_damage # per vehicle damage
+    )
+
+```
+
+
+```{r risk_est_2}
+# probability across storm levels
+fc_veh_aal_by_slr <-
+  fc_veh_damage %>% 
+  select(!c(avg_depth, perc_damage)) %>%
+  pivot_wider(
+    names_from = RP,
+    values_from = damage
+  ) %>% 
+  mutate(
+    damage = 
+      0.95*(`001`+`020`)/2 + 
+      0.04*(`020`+`100`)/2 + 
+      0.01*(`100`)
+  ) %>% 
+  select(osm_id, SLR, damage)
+```
+
+
+```{r risk_est_3}
+# probability across slr based on rcp4.5
+
+rcp45 <- read_csv("https://raw.githubusercontent.com/stanfordfuturebay/stanfordfuturebay.github.io/master/advanced/rcp45_sanfrancisco.csv")
+
+fc_veh_aal_by_year <- 
+  fc_veh_aal_by_slr %>% 
+  left_join(
+    rcp45 %>% 
+      mutate(
+        SLR = str_pad(SLR, 3 , "left", "0")
+      ) %>% 
+      select(
+        SLR,
+        `2020`,
+        `2030`,
+        `2040`,
+        `2050`
+      )
+  ) %>% 
+  pivot_longer(
+    `2020`:`2050`,
+    names_to = "year",
+    values_to = "occurrence"
+  ) %>% 
+  pivot_longer(
+    c(damage,occurrence),
+    names_to = "key",
+    values_to = "value"
+  ) %>% 
+  pivot_wider(
+    names_from = c("key","SLR"),
+    values_from = value
+  ) %>% 
+  replace(is.na(.), 0) %>% 
+  mutate(
+    damage = 
+      occurrence_000 * (damage_000 + damage_025)/2 + 
+      occurrence_025 * (damage_025 + damage_050)/2 + 
+      occurrence_050 * (damage_050)
+  ) %>% 
+  select(osm_id, year, damage)
+
+
+```
+
+
+```{r risk_est_3.5}
+# set up for multiply by vehicle count for each year (considers passenger vehicles and light weight trucks)
+emfac <- read.csv("data/EMFAC2021-EI-202xClass-SanMateo2020-2030-2040-2050-Annual-20220227200750.csv", skip = 8) 
+
+vehicle_incr <- emfac %>%
+  group_by(Calendar.Year) %>%
+  summarise(vehic_count = sum(Population)) %>%
+  rename(year = Calendar.Year)
+
+vehicle_incr <- vehicle_incr %>%
+  mutate(
+    perc_incr = vehic_count / vehicle_incr$vehic_count[1],
+    year = as.character(year)
+  )
+
+```
+
+
+```{r risk_est_4}
+fc_veh_per_bldg <- readRDS("data/fc_veh_per_bldg.rds") %>% 
+  st_set_geometry(NULL) %>%
+  select(!GEOID20)
+
+fc_veh_aal_by_year <- fc_veh_aal_by_year %>%
+  left_join(fc_veh_per_bldg) %>%
+  left_join(vehicle_incr %>% select(year, perc_incr)) %>%
+  mutate(
+    damage_per_bldg = damage * veh_per_bldg * perc_incr
+  )
+  
+```
+
+
+
+
+
+
+completed in colaboration iwth 
