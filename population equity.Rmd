@@ -333,9 +333,3 @@ smc_pm25_race_fill <-
 
 ```
   
-```{r}
-smc_pm25_income_stacked
-```
-```{r}
-smc_pm25_race_fill
-```
