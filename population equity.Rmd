@@ -22,9 +22,21 @@ Sys.setenv(CENSUS_KEY = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
 
 ```{r}
 
+#PC path
+#temp <- tempfile()
+#download.file("https://oehha.ca.gov/media/downloads/calenviroscreen/document/calenviroscreen40resultsdatadictionaryf2021.zip",destfile #= temp)
 
-ces4 <- read_excel(("calenviroscreen40resultsdatadictionary_F_2021.xlsx"), sheet = "CES4.0FINAL_results", progress =F)
+#ces4 <- read_excel(
+  #unzip(
+    #temp, 
+    #"calenviroscreen40resultsdatadictionary_F_2021.xlsx"
+  #), 
+  #sheet = "CES4.0FINAL_results"
+#)
 
+#unlink(temp)
+
+ces4 <- read_excel(("calenviroscreen40resultsdatadictionary_F_2021.xlsx"), sheet = "CES4.0FINAL_results", progress =F) #Mac path
 
 
 ```
