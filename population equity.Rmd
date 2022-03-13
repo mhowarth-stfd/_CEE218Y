@@ -289,47 +289,4 @@ smc_pm25_race_fill
 ```
 
 
-
-
-```{r}
-smc_pm25_race_fill <-
-  smc_pm25_race %>% 
-  group_by(PM2.5_tier, race) %>% 
-  summarize(estimate = sum(estimate)) %>% 
-  rbind(
-    smc_pm25_race %>% 
-      group_by(race) %>% 
-      summarize(estimate = sum(estimate)) %>% 
-      mutate(PM2.5_tier = "Total")
-  ) %>% 
-  ggplot() +
-  geom_bar(
-    aes(
-      x = PM2.5_tier %>% factor(levels = rev(c("Total","5-6","6-7","7-8","8-9","9-10","10-11"))),
-      y = estimate,
-      fill = race %>% factor(levels = rev(census_race_categories))
-    ),
-    stat = "identity",
-    position = "fill"
-  ) +
-  labs(
-    x = "PM2.5",
-    y = "Proportion of households",
-    title = "San Mateo PM2.5 exposure by race",
-    subtitle = "Annual mean concentration of PM2.5 (weighted average, µg/m3),\nover three years (2015 to 2017), aggregated by Census tract",
-    fill = "Race of householder"
-  ) +
-  coord_flip() +
-  theme(
-    legend.position = "bottom",
-    legend.direction = "vertical"
-  ) +
-  guides(
-    fill = guide_legend(
-      reverse = T
-    )
-  )
-
-
-```
   
