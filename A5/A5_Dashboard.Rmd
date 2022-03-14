@@ -1,0 +1,156 @@
+---
+title: "Assignment 9"
+runtime: shiny
+output: 
+  flexdashboard::flex_dashboard:
+    vertical_layout: fill
+---
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(leaflet)
+library(sf)
+library(plotly)
+
+path_drive <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/5A/data/"
+
+smc_data <- readRDS(paste0(path_drive,"smc_data.rds"))
+map_data <- readRDS(paste0(path_drive,"map_data.rds"))
+
+
+```
+
+
+
+Inputs {.sidebar}
+-------------------------------------
+
+```{r}
+checkboxGroupInput(
+  inputId = "city_interest", 
+  label = "City:",
+  choices = c("Belmont", "East Palo Alto", "Foster City", "Redwood City"), 
+  selected = c("Belmont", "East Palo Alto", "Foster City", "Redwood City")
+)
+
+
+```
+
+Column
+-------------------------------------
+
+### Monthly consumption
+
+```{r}
+plotlyOutput("plot")
+```
+
+```{r, context = "server"}
+observeEvent({
+  input$city_interest
+  }, {
+
+  chart <- smc_data %>%
+    filter(
+      city %in% c(
+        input$city_interest
+      )
+    ) %>%
+    
+    ggplot(
+      aes(
+        x = date,
+        y = PM25
+      )
+    ) +
+    
+    geom_line(
+      aes(
+        color = city 
+      )
+    ) +
+    
+    labs(
+      x = "Date",
+      y = "PM2.5 Pollution (micro-g / m^3)",
+      title = paste0("PM2.5 Pollution of SMC Jurisdictions"),
+      color = "City"
+    ) +
+    
+    theme(legend.position = "top")
+
+  output$plot <- renderPlotly({
+    chart %>%
+      ggplotly() %>%
+      config(displayModeBar = F)
+  })
+
+})
+```
+
+Column
+-------------------------------------
+
+### ZCTA consumption
+
+```{r}
+leafletOutput("map")
+```
+
+```{r, context = "server"}
+observeEvent({
+  input$city_interest
+  }, {
+
+  
+  pm25_pal <- colorNumeric(
+    palette = "RdYlGn",
+    reverse = T,
+    domain = 
+      map_data$PM25
+  )
+  
+  output$map <- renderLeaflet({
+    leaflet() %>% 
+      
+      addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+      
+      addPolygons(
+        data = map_data %>% filter(city %in% input$city_interest),
+        fillColor = ~pm25_pal(PM25),
+        color = "white",
+        opacity = 0.5,
+        fillOpacity = 0.5,
+        weight = 1,
+        label = ~paste0(
+          round(PM25,2), 
+          " in ", city
+        ),
+        highlightOptions = highlightOptions(
+          weight = 2,
+          opacity = 1
+        )
+      ) %>% 
+      
+      
+      addPolygons(
+        data = map_data,
+        fillColor = "grey",
+        color = "grey",
+        opacity = 0.5,
+        fillOpacity = 0.25,
+        weight = 1,
+
+      ) %>%      
+      
+      addLegend(
+        data = map_data,
+        pal = pm25_pal,
+        values = ~PM25,
+        title = paste0("Micrograms of PM2.5 per<br>cubic meter of air")
+      )
+  })
+  
+})
+```
