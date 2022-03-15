@@ -195,7 +195,7 @@ Column
 -------------------------------------
 
 ### Equity Analysis PM2.5 Pollution
-
+Annual mean concentration of indoor PM2.5 (weighted average, µg/m3), over three years (2015 to 2017), aggregated by Census tract
 ```{r}
 plotlyOutput("plot2")
 ```
@@ -208,16 +208,15 @@ observeEvent({
 
     
   if (input$equity == "Racial"){
-    chart2 <- smc_pm25_race_fill
+    chart2 <- smc_pm25_race_fill %>% ggplotly(tooltip = c("y"))
     
   }else{
-    chart2 <- smc_pm25_income_fill
+    chart2 <- smc_pm25_income_fill %>% ggplotly(tooltip = c("y","fill"))
   }
     
 
   output$plot2 <- renderPlotly({
     chart2 %>%
-      ggplotly() %>%
       config(displayModeBar = F)
   })
 

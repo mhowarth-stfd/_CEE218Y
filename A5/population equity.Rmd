@@ -197,6 +197,9 @@ smc_pm25_race_stacked <-
     )
   )
 
+
+
+
 ```
   
 ```{r}
@@ -209,6 +212,7 @@ smc_pm25_race_stacked
 ```{r}
 smc_pm25_race_fill <- #proportional distribution (extra toggle option)
   smc_pm25_race %>% 
+  filter(estimate != 0) %>%
   group_by(PM2.5_tier, race) %>% 
   summarize(estimate = sum(estimate)) %>% 
   rbind(
@@ -244,6 +248,8 @@ smc_pm25_race_fill <- #proportional distribution (extra toggle option)
       reverse = T
     )
   )
+
+saveRDS(smc_pm25_race_fill, "data/smc_pm25_race_fill.rds")
 
 
 ```
@@ -398,6 +404,7 @@ smc_pm25_income_stacked
 ```{r, eval=F}
 smc_pm25_income_fill <- #proportional distribution (optional)
   smc_pm25_income %>% 
+  filter(estimate != 0) %>%
   group_by(PM2.5_tier, income) %>% 
   summarize(estimate = sum(estimate)) %>% 
   rbind(
@@ -411,7 +418,8 @@ smc_pm25_income_fill <- #proportional distribution (optional)
     aes(
       x = PM2.5_tier %>% factor(levels = rev(c("Total","5-6","6-7","7-8","8-9","9-10","10-11"))),
       y = estimate,
-      fill = income %>% factor(levels = rev(census_income_categories))
+      fill = income %>% factor(levels = rev(census_income_categories)),
+      #text = paset0("estimate: ", estimate, " for ", income)
     ),
     stat = "identity",
     position = "fill"
@@ -425,14 +433,18 @@ smc_pm25_income_fill <- #proportional distribution (optional)
   ) +
   coord_flip() +
   theme(
-    legend.position = "bottom",
-    legend.direction = "horizontal"
+    legend.position = "none",
+    #legend.direction = "horizontal" #cant have horizontal with plotly
   ) +
   guides(
     fill = guide_legend(
       reverse = T
     )
   )
+
+
+saveRDS(smc_pm25_income_fill, "data/smc_pm25_income_fill.rds")
+
 
 saveRDS(smc_pm25_income_fill, "smc_pm25_income_fill.rds")
 ```
