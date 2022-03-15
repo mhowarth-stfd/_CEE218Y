@@ -63,7 +63,7 @@ ces4_smc_pm25 <- readRDS("ces4_smc_pm25.rds")
 ```
 
 ```{r, eval = F}
-pm25_pal <- colorNumeric(
+smc_pm25_pal <- colorNumeric(
   palette = "Reds",
   domain = ces4_smc_pm25$PM2.5
 )
@@ -85,7 +85,7 @@ smc_pm25_pal <- readRDS("smc_pm25_pal.rds")
 ```
 
 ```{r}
-summary(ces4_smc_pm25$PM2.5)
+summary(ces4_smc_pm25$PM2.5) #prob can't incorporate to dashboard
 ```
 
 ```{r}
@@ -254,67 +254,6 @@ smc_pm25_race_fill
 ```
 
 
-
-
-
-
-
-```{r}
-#income by race equity assessment  (extra to assignment, if want additional analysis)
-smc_income_race <-
-  1:7 %>% 
-  map_dfr(function(x){
-    getCensus(
-      name = "acs/acs5",
-      vintage = 2019,
-      region = "county:081",
-      regionin = "state:06",
-      vars = paste0("group(B19001",LETTERS[x],")")
-    ) %>%
-      select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
-      pivot_longer(
-        ends_with("E"),
-        names_to = "name",
-        values_to = "estimate"
-      ) %>%
-      left_join(
-        acs_vars_2019_5yr %>% 
-          select(name, label)
-      ) %>% 
-      select(-name) %>% 
-      separate(
-        label,
-        into = c(NA,NA,"income"),
-        sep = "!!"
-      ) %>% 
-      filter(!is.na(income)) %>% 
-      mutate(race = census_race_categories[x])
-  })
-```
-
-```{r}
-smc_income_race %>% 
-  group_by(income, race) %>% 
-  summarize(estimate = sum(estimate)) %>% 
-  ggplot() +
-  geom_bar(
-    aes(
-      x = income,
-      y = estimate,
-      fill = race
-    ),
-    stat = "identity",
-    position = "stack"
-  ) +
-  labs(
-    x = "Household income",
-    y = "Number of households",
-    title = "San Mateo household income by race",
-    fill = "Race of householder"
-  ) +
-  coord_flip()
-```
-
 ```{r}
 census_income_categories <- 
   c("Less than $10,000",
@@ -452,7 +391,8 @@ saveRDS(smc_pm25_income_stacked, "smc_pm25_income_stacked.rds")
 ```
 
 ```{r}
-smc_pm25_income_stacked <- readRDS("smc_pm25_income_stacked.rds")
+smc_pm25_income_stacked <- readRDS("smc_pm25_income_stacked.rds") #for some reason these NA values show up even though I removed them earlier
+smc_pm25_income_stacked
 ```
 
 ```{r, eval=F}
@@ -498,5 +438,70 @@ saveRDS(smc_pm25_income_fill, "smc_pm25_income_fill.rds")
 ```
 
 ```{r}
+#optional
 smc_pm25_income_fill <- readRDS("smc_pm25_income_fill.rds")
+smc_pm25_income_fill
+```
+
+```{r}
+#income by race equity assessment  (extra to assignment, if want additional analysis)
+smc_income_race <-
+  1:7 %>% 
+  map_dfr(function(x){
+    getCensus(
+      name = "acs/acs5",
+      vintage = 2019,
+      region = "county:081",
+      regionin = "state:06",
+      vars = paste0("group(B19001",LETTERS[x],")")
+    ) %>%
+      select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+      pivot_longer(
+        ends_with("E"),
+        names_to = "name",
+        values_to = "estimate"
+      ) %>%
+      left_join(
+        acs_vars_2019_5yr %>% 
+          select(name, label)
+      ) %>% 
+      select(-name) %>% 
+      separate(
+        label,
+        into = c(NA,NA,"income"),
+        sep = "!!"
+      ) %>% 
+      filter(!is.na(income)) %>% 
+      mutate(race = census_race_categories[x])
+  })
+```
+
+```{r}
+smc_income_race <- readRDS ("smc_income_race.rds")
+```
+
+```{r}
+smc_income_race %>% 
+  group_by(income, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = income,
+      y = estimate,
+      fill = race
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "Household income",
+    y = "Number of households",
+    title = "San Mateo household income by race",
+    fill = "Race of householder"
+  ) +
+  coord_flip()
+```
+```{r}
+smc_income_race_plot <- readRDS( "smc_income_race_plot.rds")
 ```
