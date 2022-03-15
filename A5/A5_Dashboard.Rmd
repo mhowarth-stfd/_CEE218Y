@@ -1,5 +1,5 @@
 ---
-title: "Assignment 9"
+title: "Assignment 5 - Air Pollution"
 runtime: shiny
 output: 
   flexdashboard::flex_dashboard:
@@ -13,11 +13,44 @@ library(leaflet)
 library(sf)
 library(plotly)
 
-path_drive <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/5A/data/"
+#path_drive <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/5A/data/"
 
-smc_data <- readRDS(paste0(path_drive,"smc_data.rds"))
-map_data <- readRDS(paste0(path_drive,"map_data.rds"))
+smc_data <- readRDS("data/smc_data.rds")
+map_data <- readRDS("data/map_data.rds")
 
+smc_pm25_race_fill <- readRDS("data/smc_pm25_race_fill.rds")
+smc_pm25_income_fill <- readRDS("data/smc_pm25_income_fill.rds")
+
+  census_race_categories <- 
+    c(
+      "White Alone",
+      "Black or African American",
+      "American Indian and Alaska Native Alone",
+      "Asian Alone",
+      "Native Hawaiian and Other Pacific Islander Alone",
+      "Some Other Race Alone",
+      "Two or More Races"
+    )
+  
+  census_income_categories <- 
+    c("Less than $10,000",
+      "$10,000 to $14,999",
+      "$15,000 to $19,999",
+      "$20,000 to $24,999",
+      "$25,000 to $29,999",
+      "$30,000 to $34,999",
+      "$35,000 to $39,999",
+      "$40,000 to $44,999",
+      "$45,000 to $49,000",
+      "$50,000 to $59,999",
+      "$60,000 to $74,999",
+      "$75,000 to $99,999",
+      "$100,000 to $124,999",
+      "$125,000 to $149,999",
+      "$150,000 to $199,999",
+      "$200,000 or more"
+      
+    )
 
 ```
 
@@ -34,16 +67,22 @@ checkboxGroupInput(
   selected = c("Belmont", "East Palo Alto", "Foster City", "Redwood City")
 )
 
+selectInput(
+  inputId = "equity", 
+  label = "Equity Analysis:",
+  choices = c("Racial", "Income"), 
+)
+
 
 ```
 
 Column
 -------------------------------------
 
-### Monthly consumption
+### Graph of San Mateo County PM2.5 Pollution
 
 ```{r}
-plotlyOutput("plot")
+plotlyOutput("plot1")
 ```
 
 ```{r, context = "server"}
@@ -51,37 +90,33 @@ observeEvent({
   input$city_interest
   }, {
 
-  chart <- smc_data %>%
+  chart1 <- smc_data %>%
     filter(
       city %in% c(
         input$city_interest
       )
     ) %>%
-    
     ggplot(
       aes(
         x = date,
         y = PM25
       )
     ) +
-    
     geom_line(
       aes(
         color = city 
       )
     ) +
-    
     labs(
       x = "Date",
       y = "PM2.5 Pollution (micro-g / m^3)",
-      title = paste0("PM2.5 Pollution of SMC Jurisdictions"),
+      title = paste0("Outdoor PM2.5 Pollution of SMC Jurisdictions"),
       color = "City"
     ) +
-    
     theme(legend.position = "top")
 
-  output$plot <- renderPlotly({
-    chart %>%
+  output$plot1 <- renderPlotly({
+    chart1 %>%
       ggplotly() %>%
       config(displayModeBar = F)
   })
@@ -89,10 +124,9 @@ observeEvent({
 })
 ```
 
-Column
--------------------------------------
 
-### ZCTA consumption
+
+### Map of San Mateo County PM2.5 Pollution
 
 ```{r}
 leafletOutput("map")
@@ -115,6 +149,17 @@ observeEvent({
     leaflet() %>% 
       
       addProviderTiles(provider = providers$CartoDB.Positron) %>% 
+    
+      
+      addPolygons(
+        data = map_data,
+        fillColor = "grey",
+        color = "grey",
+        opacity = 0.5,
+        fillOpacity = 0.25,
+        weight = 1,
+
+      ) %>% 
       
       addPolygons(
         data = map_data %>% filter(city %in% input$city_interest),
@@ -131,26 +176,54 @@ observeEvent({
           weight = 2,
           opacity = 1
         )
-      ) %>% 
-      
-      
-      addPolygons(
-        data = map_data,
-        fillColor = "grey",
-        color = "grey",
-        opacity = 0.5,
-        fillOpacity = 0.25,
-        weight = 1,
-
-      ) %>%      
+      )  %>%      
       
       addLegend(
         data = map_data,
         pal = pm25_pal,
         values = ~PM25,
-        title = paste0("Micrograms of PM2.5 per<br>cubic meter of air")
+        title = paste0("Micrograms of PM2.5 per<br>cubic meter of air, outdoor")
       )
   })
   
 })
 ```
+
+
+
+Column
+-------------------------------------
+
+### Equity Analysis PM2.5 Pollution
+
+```{r}
+plotlyOutput("plot2")
+```
+
+```{r, context = "server"}
+observeEvent({
+  input$equity
+  }, {
+
+
+    
+  if (input$equity == "Racial"){
+    chart2 <- smc_pm25_race_fill
+    
+  }else{
+    chart2 <- smc_pm25_income_fill
+  }
+    
+
+  output$plot2 <- renderPlotly({
+    chart2 %>%
+      ggplotly() %>%
+      config(displayModeBar = F)
+  })
+
+})
+```
+
+
+### Commentary
+
