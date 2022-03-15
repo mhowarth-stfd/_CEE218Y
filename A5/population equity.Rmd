@@ -257,6 +257,8 @@ smc_pm25_race_fill
 
 
 
+
+
 ```{r}
 #income by race equity assessment  (extra to assignment, if want additional analysis)
 smc_income_race <-
@@ -313,5 +315,188 @@ smc_income_race %>%
   coord_flip()
 ```
 
-  
+```{r}
+census_income_categories <- 
+  c("Less than $10,000",
+    "$10,000 to $14,999",
+    "$15,000 to $19,999",
+    "$20,000 to $24,999",
+    "$25,000 to $29,999",
+    "$30,000 to $34,999",
+    "$35,000 to $39,999",
+    "$40,000 to $44,999",
+    "$45,000 to $49,000",
+    "$50,000 to $59,999",
+    "$60,000 to $74,999",
+    "$75,000 to $99,999",
+    "$100,000 to $124,999",
+    "$125,000 to $149,999",
+    "$150,000 to $199,999",
+    "$200,000 or more"
+    
+  )
+```
 
+```{r, eval = F}
+smc_income_tract <-
+  1:7 %>% 
+  map_dfr(function(x){
+    getCensus(
+      name = "acs/acs5",
+      vintage = 2019,
+      region = "tract:*",
+      regionin = "state:06+county:081",
+      vars = paste0("group(B19001",LETTERS[x],")")
+    ) %>%
+      mutate(
+        tract = paste0(state, county, tract) %>% as.numeric()) %>% 
+      select(!c(GEO_ID,state,NAME) & !ends_with(c("EA","MA","M"))) %>%
+      pivot_longer(
+        ends_with("E"),
+        names_to = "name",
+        values_to = "estimate"
+      ) %>%
+      left_join(
+        acs_vars_2019_5yr %>% 
+          select(name, label)
+      )%>%
+      left_join(
+        acs_vars_2019_5yr %>% 
+          select(name, label)
+      ) %>% 
+      select(-name) %>% 
+      separate(
+        label,
+        into = c(NA,NA,"income"),
+        sep = "!!"
+      )%>% 
+      filter(!is.na(income))
+      
+    
+  })
+
+saveRDS(smc_income_tract, "smc_income_tracts.rds" )
+```
+
+```{r}
+smc_income_tracts <- readRDS("smc_income_tracts.rds" )
+```
+```{r, eval= F}
+smc_pm25_income <-
+  smc_income_tract %>% 
+  left_join(
+    ces4_smc_pm25 %>% 
+      st_drop_geometry(),
+    by = c("tract" = "Census Tract")
+  ) %>% 
+  mutate(
+    PM2.5_tier =
+      case_when(
+        PM2.5 < 6 ~ "5-6",
+        PM2.5 < 7 ~ "6-7",
+        PM2.5 < 8 ~ "7-8",
+        PM2.5 < 9 ~ "8-9",
+        PM2.5 < 10 ~ "9-10",
+        TRUE ~ "10-11"
+      ) 
+  ) %>% 
+  group_by(income, PM2.5_tier) %>%
+  summarize(estimate = sum(estimate, na.rm = T))
+saveRDS(smc_pm25_income, "smc_pm25_income.rds" )
+```
+
+```{r}
+smc_pm25_income <- readRDS("smc_pm25_income.rds")
+```
+
+```{r, eval = F}
+smc_pm25_income_stacked <-
+  smc_pm25_income %>% 
+  group_by(PM2.5_tier, income) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  rbind(
+    smc_pm25_income %>% 
+      group_by(income) %>% 
+      summarize(estimate = sum(estimate)) %>% 
+      mutate(PM2.5_tier = "Total")
+  ) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = PM2.5_tier %>% factor(levels = rev(c("Total","5-6","6-7","7-8","8-9","9-10","10-11"))),
+      y = estimate,
+      fill = income %>% factor(levels = rev(census_income_categories))),
+      stat = "identity",
+      position = "stack"
+  ) +
+  labs(
+    x = "PM2.5",
+    y = "Number of households",
+    title = "San Mateo PM2.5 exposure by income",
+    subtitle = "Annual mean concentration of PM2.5 (weighted average, µg/m3),\nover three years (2015 to 2017), aggregated by Census tract",
+    fill = "Income"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal"
+  ) +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+
+
+saveRDS(smc_pm25_income_stacked, "smc_pm25_income_stacked.rds")
+```
+
+```{r}
+smc_pm25_income_stacked <- readRDS("smc_pm25_income_stacked.rds")
+```
+
+```{r, eval=F}
+smc_pm25_income_fill <- #proportional distribution (optional)
+  smc_pm25_income %>% 
+  group_by(PM2.5_tier, income) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  rbind(
+    smc_pm25_income %>% 
+      group_by(income) %>% 
+      summarize(estimate = sum(estimate)) %>% 
+      mutate(PM2.5_tier = "Total")
+  ) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = PM2.5_tier %>% factor(levels = rev(c("Total","5-6","6-7","7-8","8-9","9-10","10-11"))),
+      y = estimate,
+      fill = income %>% factor(levels = rev(census_income_categories))
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "PM2.5",
+    y = "Proportion of households",
+    title = "San Mateo PM2.5 exposure by income",
+    subtitle = "Annual mean concentration of PM2.5 (weighted average, µg/m3),\nover three years (2015 to 2017), aggregated by Census tract",
+    fill = "Income of householder"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "horizontal"
+  ) +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+
+saveRDS(smc_pm25_income_fill, "smc_pm25_income_fill.rds")
+```
+
+```{r}
+smc_pm25_income_fill <- readRDS("smc_pm25_income_fill.rds")
+```
