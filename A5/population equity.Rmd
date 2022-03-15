@@ -15,12 +15,13 @@ library(censusapi)
 library(tigris)
 library(leaflet)
 library(plotly)
+library(sf)
 library(tidyverse)
 Sys.setenv(CENSUS_KEY = "ffe5c482aad3c87fd918ba8a6bd5967ae4228456")
 ```
 
 
-```{r}
+```{r, eval = F}
 
 #PC path
 #temp <- tempfile()
@@ -58,6 +59,10 @@ ces4_smc_pm25 <-
 ```
 
 ```{r}
+ces4_smc_pm25 <- readRDS("ces4_smc_pm25.rds")
+```
+
+```{r, eval = F}
 pm25_pal <- colorNumeric(
   palette = "Reds",
   domain = ces4_smc_pm25$PM2.5
@@ -74,6 +79,11 @@ leaflet() %>%
     label = ~PM2.5
   )
 ```
+
+```{r}
+smc_pm25_pal <- readRDS("smc_pm25_pal.rds")
+```
+
 ```{r}
 summary(ces4_smc_pm25$PM2.5)
 ```
@@ -93,7 +103,7 @@ census_race_categories <-
 ```
 
 
-```{r}
+```{r, eval = F}
 smc_race_tracts <-
   1:7 %>% 
   map_dfr(function(x){
@@ -116,9 +126,139 @@ smc_race_tracts <-
   })
 ```
 
+```{r}
+smc_race_tracts <- readRDS("smc_race_tracts.rds" )
+```
+
+```{r, eval = F}
+smc_pm25_race <-
+  smc_race_tracts %>% 
+  left_join(
+    ces4_smc_pm25 %>% 
+      st_drop_geometry(),
+    by = c("tract" = "Census Tract")
+  ) %>% 
+  mutate(
+    PM2.5_tier =
+      case_when(
+        PM2.5 < 6 ~ "5-6",
+        PM2.5 < 7 ~ "6-7",
+        PM2.5 < 8 ~ "7-8",
+        PM2.5 < 9 ~ "8-9",
+        PM2.5 < 10 ~ "9-10",
+        TRUE ~ "10-11"
+      ) 
+  ) %>% 
+  group_by(race, PM2.5_tier) %>% 
+  summarize(estimate = sum(estimate, na.rm = T))
+```
 
 ```{r}
-#income by race equity assessment 
+smc_pm25_race <- readRDS("smc_pm25_race.rds")
+```
+
+```{r}
+
+smc_pm25_race_stacked <-
+  smc_pm25_race %>% 
+  group_by(PM2.5_tier, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  rbind(
+    smc_pm25_race %>% 
+      group_by(race) %>% 
+      summarize(estimate = sum(estimate)) %>% 
+      mutate(PM2.5_tier = "Total")
+  ) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = PM2.5_tier %>% factor(levels = rev(c("Total","5-6","6-7","7-8","8-9","9-10","10-11"))),
+      y = estimate,
+      fill = race %>% factor(levels = rev(census_race_categories))
+    ),
+    stat = "identity",
+    position = "stack"
+  ) +
+  labs(
+    x = "PM2.5",
+    y = "Number of households",
+    title = "San Mateo PM2.5 exposure by race",
+    subtitle = "Annual mean concentration of PM2.5 (weighted average, µg/m3),\nover three years (2015 to 2017), aggregated by Census tract",
+    fill = "Race of householder"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  ) +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+
+```
+  
+```{r}
+smc_pm25_race_stacked <- readRDS("smc_pm25_race_stacked.rds")
+smc_pm25_race_stacked
+```
+
+
+
+```{r}
+smc_pm25_race_fill <- #proportional distribution (extra toggle option)
+  smc_pm25_race %>% 
+  group_by(PM2.5_tier, race) %>% 
+  summarize(estimate = sum(estimate)) %>% 
+  rbind(
+    smc_pm25_race %>% 
+      group_by(race) %>% 
+      summarize(estimate = sum(estimate)) %>% 
+      mutate(PM2.5_tier = "Total")
+  ) %>% 
+  ggplot() +
+  geom_bar(
+    aes(
+      x = PM2.5_tier %>% factor(levels = rev(c("Total","5-6","6-7","7-8","8-9","9-10","10-11"))),
+      y = estimate,
+      fill = race %>% factor(levels = rev(census_race_categories))
+    ),
+    stat = "identity",
+    position = "fill"
+  ) +
+  labs(
+    x = "PM2.5",
+    y = "Proportion of households",
+    title = "San Mateo PM2.5 exposure by race",
+    subtitle = "Annual mean concentration of PM2.5 (weighted average, µg/m3),\nover three years (2015 to 2017), aggregated by Census tract",
+    fill = "Race of householder"
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.direction = "vertical"
+  ) +
+  guides(
+    fill = guide_legend(
+      reverse = T
+    )
+  )
+
+
+```
+
+```{r}
+smc_pm25_race_fill <- readRDS("smc_pm25_race_fill.rds")
+smc_pm25_race_fill
+```
+
+
+
+
+
+```{r}
+#income by race equity assessment  (extra to assignment, if want additional analysis)
 smc_income_race <-
   1:7 %>% 
   map_dfr(function(x){
@@ -173,163 +313,5 @@ smc_income_race %>%
   coord_flip()
 ```
 
-```{r}
-smc_pm25_race <-
-  smc_race_tracts %>% 
-  left_join(
-    ces4_smc_pm25 %>% 
-      st_drop_geometry(),
-    by = c("tract" = "Census Tract")
-  ) %>% 
-  mutate(
-    PM2.5_tier =
-      case_when(
-        PM2.5 < 6 ~ "5-6",
-        PM2.5 < 7 ~ "6-7",
-        PM2.5 < 8 ~ "7-8",
-        PM2.5 < 9 ~ "8-9",
-        PM2.5 < 10 ~ "9-10",
-        TRUE ~ "10-11"
-      ) 
-  ) %>% 
-  group_by(race, PM2.5_tier) %>% 
-  summarize(estimate = sum(estimate, na.rm = T))
-```
-
-
-
-```{r}
-
-smc_pm25_race_stacked <-
-  smc_pm25_race %>% 
-  group_by(PM2.5_tier, race) %>% 
-  summarize(estimate = sum(estimate)) %>% 
-  rbind(
-    smc_pm25_race %>% 
-      group_by(race) %>% 
-      summarize(estimate = sum(estimate)) %>% 
-      mutate(PM2.5_tier = "Total")
-  ) %>% 
-  ggplot() +
-  geom_bar(
-    aes(
-      x = PM2.5_tier %>% factor(levels = rev(c("Total","5-6","6-7","7-8","8-9","9-10","10-11"))),
-      y = estimate,
-      fill = race %>% factor(levels = rev(census_race_categories))
-    ),
-    stat = "identity",
-    position = "stack"
-  ) +
-  labs(
-    x = "PM2.5",
-    y = "Number of households",
-    title = "San Mateo PM2.5 exposure by race",
-    subtitle = "Annual mean concentration of PM2.5 (weighted average, µg/m3),\nover three years (2015 to 2017), aggregated by Census tract",
-    fill = "Race of householder"
-  ) +
-  coord_flip() +
-  theme(
-    legend.position = "bottom",
-    legend.direction = "vertical"
-  ) +
-  guides(
-    fill = guide_legend(
-      reverse = T
-    )
-  )
-
-smc_pm25_race_fill <-
-  smc_pm25_race %>% 
-  group_by(PM2.5_tier, race) %>% 
-  summarize(estimate = sum(estimate)) %>% 
-  rbind(
-    smc_pm25_race %>% 
-      group_by(race) %>% 
-      summarize(estimate = sum(estimate)) %>% 
-      mutate(PM2.5_tier = "Total")
-  ) %>% 
-  ggplot() +
-  geom_bar(
-    aes(
-      x = PM2.5_tier %>% factor(levels = rev(c("Total","5-6","6-7","7-8","8-9","9-10","10-11"))),
-      y = estimate,
-      fill = race %>% factor(levels = rev(census_race_categories))
-    ),
-    stat = "identity",
-    position = "fill"
-  ) +
-  labs(
-    x = "PM2.5",
-    y = "Proportion of households",
-    title = "San Mateo PM2.5 exposure by race",
-    subtitle = "Annual mean concentration of PM2.5 (weighted average, µg/m3),\nover three years (2015 to 2017), aggregated by Census tract",
-    fill = "Race of householder"
-  ) +
-  coord_flip() +
-  theme(
-    legend.position = "bottom",
-    legend.direction = "vertical"
-  ) +
-  guides(
-    fill = guide_legend(
-      reverse = T
-    )
-  )
-
-
-```
-  
-```{r}
-smc_pm25_race_stacked
-```
-
-```{r}
-smc_pm25_race_fill
-```
-
-
-
-
-```{r}
-smc_pm25_race_fill <-
-  smc_pm25_race %>% 
-  group_by(PM2.5_tier, race) %>% 
-  summarize(estimate = sum(estimate)) %>% 
-  rbind(
-    smc_pm25_race %>% 
-      group_by(race) %>% 
-      summarize(estimate = sum(estimate)) %>% 
-      mutate(PM2.5_tier = "Total")
-  ) %>% 
-  ggplot() +
-  geom_bar(
-    aes(
-      x = PM2.5_tier %>% factor(levels = rev(c("Total","5-6","6-7","7-8","8-9","9-10","10-11"))),
-      y = estimate,
-      fill = race %>% factor(levels = rev(census_race_categories))
-    ),
-    stat = "identity",
-    position = "fill"
-  ) +
-  labs(
-    x = "PM2.5",
-    y = "Proportion of households",
-    title = "San Mateo PM2.5 exposure by race",
-    subtitle = "Annual mean concentration of PM2.5 (weighted average, µg/m3),\nover three years (2015 to 2017), aggregated by Census tract",
-    fill = "Race of householder"
-  ) +
-  coord_flip() +
-  theme(
-    legend.position = "bottom",
-    legend.direction = "vertical"
-  ) +
-  guides(
-    fill = guide_legend(
-      reverse = T
-    )
-  )
-
-
-```
   
 
