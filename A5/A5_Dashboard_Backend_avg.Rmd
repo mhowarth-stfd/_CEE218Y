@@ -1,0 +1,75 @@
+---
+title: "A5_Dashboard_Backend"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(sf)
+library(plotly)
+library(tigris)
+
+path_drive <- "/Volumes/GoogleDrive/.shortcut-targets-by-id/1i5yZPOBgJfC_blys_kNUJn1-FfLWoyiO/Assignments/5A/data/"
+```
+
+
+# air data
+```{r, eval = F}
+# combine city data
+
+bel_data <- readRDS(paste0(path_drive,"feb_daily_belmont_data.rds")) 
+
+epa_data <- readRDS(paste0(path_drive,"epa_sensor_data.rds"))
+
+fc_data <- readRDS(paste0(path_drive,"fc_sensor_data.rds"))
+
+rwc_data <- readRDS(paste0(path_drive,"rwc_outdoor_weighted.rds"))
+
+smc_data <- rbind(bel_data, epa_data, fc_data, rwc_data)
+
+saveRDS(smc_data, paste0(path_drive,"smc_data.rds"))
+
+```
+
+
+```{r}
+smc_data <- readRDS(paste0(path_drive,"smc_data.rds"))
+
+places_of_interest <- unique(smc_data$city)
+```
+
+
+
+# geographies
+
+```{r}
+city_boundries <- places("California") %>% 
+  filter(NAME %in% places_of_interest) %>%
+  rename(city = NAME)
+
+map_data <- smc_data %>% 
+  mutate(date = as.character(date)) %>%
+  group_by(city) %>%
+  summarise(
+    PM25 = mean(PM25)
+  ) %>%
+  left_join(city_boundries) %>%
+  st_as_sf()
+
+saveRDS(map_data, "data/map_data_avg.rds")
+```
+
+
+
+
+
+
+
+
